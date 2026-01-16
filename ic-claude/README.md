@@ -1,99 +1,70 @@
-# ICR Plugin for Claude Code
+# ICR - Infinite Context for Claude Code
 
 Give Claude perfect memory of your codebase with one command.
 
-## Quick Start
+## Install (30 seconds)
 
-### 1. Install the plugin
-
-**Option A: From GitHub (recommended)**
-```bash
-# In Claude Code, run:
-/install-github-mcp idan82labs/icr
-```
-
-**Option B: Manual installation**
-```bash
-# Clone the repo
-git clone https://github.com/idan82labs/icr.git
-
-# Copy the plugin to your project
-cp -r icr/ic-claude/.claude-plugin .claude-plugin
-cp -r icr/ic-claude/commands commands
-cp -r icr/ic-claude/skills skills
-cp icr/ic-claude/.mcp.json .mcp.json
-```
-
-### 2. Set up in your project
+In your project directory, run:
 
 ```bash
-/icr:setup
+curl -fsSL https://raw.githubusercontent.com/idan82labs/icr/main/install.sh | bash
 ```
 
-This creates `.icr/` with a Python venv and installs ICR packages.
+Then restart Claude Code.
 
-### 3. Index your codebase
-
-```bash
-/icr:index
-```
-
-### 4. Just ask questions!
-
-Now Claude automatically uses ICR to find relevant code:
-
-- "How does the auth system work?"
-- "Where is the database connection configured?"
-- "Find all usages of UserService"
-- "Explain the payment flow"
+**That's it.** Just ask questions normally.
 
 ## How It Works
 
-1. **Indexing**: ICR chunks your code, embeds it with a local ONNX model, and stores vectors in HNSW
-2. **Retrieval**: When you ask a question, ICR finds semantically relevant code using hybrid search (vectors + BM25)
-3. **Context**: Results are compiled into a context pack that fits Claude's token budget
-4. **Answer**: Claude answers with accurate, grounded information citing specific files
+After installation, Claude automatically uses ICR when you ask about code:
 
-## Commands
-
-| Command | Description |
+| You ask | Claude does |
 |---------|-------------|
-| `/icr:setup` | One-time setup for a project |
-| `/icr:index` | Index/re-index the codebase |
+| "How does auth work?" | Searches code, reads relevant files, explains |
+| "Where is the DB configured?" | Finds config files, shows you the code |
+| "Find all API endpoints" | Scans codebase, lists them with locations |
 
-## No API Keys Required
+No special commands. No syntax to learn. Just ask.
 
-ICR runs entirely locally:
-- Embeddings: ONNX model (all-MiniLM-L6-v2)
-- Vector search: HNSW (hnswlib)
-- Lexical search: SQLite FTS5
+## What's Happening Behind the Scenes
 
-## Project Structure
+1. **Indexing**: Your code is chunked and embedded locally (no API calls)
+2. **Retrieval**: Questions trigger hybrid search (semantic + keyword)
+3. **Context**: Relevant code is packed into Claude's context window
+4. **Answer**: Claude responds with accurate info citing specific files
 
-After setup, your project has:
+All processing happens locally. Your code never leaves your machine.
 
+## Requirements
+
+- Python 3.10+
+- Claude Code
+
+## Re-index After Major Changes
+
+```bash
+.icr/venv/bin/icd index --repo-root .
 ```
-.icr/
-  venv/           # Python environment
-  index.db        # SQLite database
-  vectors.hnsw    # Vector index
-  config.yaml     # Configuration
-  mcp.log         # Server logs
-```
 
-## Configuration
+## Configuration (Optional)
 
-Edit `.icr/config.yaml` to customize:
+Edit `.icr/config.yaml`:
 
 ```yaml
 embedding:
-  model_name: all-MiniLM-L6-v2  # or all-mpnet-base-v2 for higher quality
+  model_name: all-MiniLM-L6-v2  # or all-mpnet-base-v2 for better quality
 
 retrieval:
-  weight_embedding: 0.4  # Semantic similarity weight
-  weight_bm25: 0.3       # Keyword match weight
+  weight_embedding: 0.4  # Semantic similarity
+  weight_bm25: 0.3       # Keyword matching
   weight_recency: 0.1    # Recent files boost
 
 pack:
-  default_budget_tokens: 8000  # Context size
+  default_budget_tokens: 8000  # Context size per query
+```
+
+## Uninstall
+
+```bash
+rm -rf .icr .mcp.json
 ```
