@@ -22,9 +22,10 @@ mkdir -p .icr
 # Create venv (use python3.10+ if available)
 python3 -m venv .icr/venv
 
-# Install packages
+# Install packages from GitHub
 .icr/venv/bin/pip install --upgrade pip
-.icr/venv/bin/pip install icd ic-mcp
+.icr/venv/bin/pip install "icd @ git+https://github.com/idan82labs/icr.git#subdirectory=icd"
+.icr/venv/bin/pip install "ic-mcp @ git+https://github.com/idan82labs/icr.git#subdirectory=ic-mcp"
 ```
 
 3. Create `.icr/config.yaml` with default settings:

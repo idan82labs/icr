@@ -6,14 +6,22 @@ Give Claude perfect memory of your codebase with one command.
 
 ### 1. Install the plugin
 
+**Option A: From GitHub (recommended)**
 ```bash
-# From Claude Code
-/plugin install icr@idan82labs/icr
+# In Claude Code, run:
+/install-github-mcp idan82labs/icr
 ```
 
-Or manually:
+**Option B: Manual installation**
 ```bash
-git clone https://github.com/idan82labs/icr.git ~/.claude/plugins/icr
+# Clone the repo
+git clone https://github.com/idan82labs/icr.git
+
+# Copy the plugin to your project
+cp -r icr/ic-claude/.claude-plugin .claude-plugin
+cp -r icr/ic-claude/commands commands
+cp -r icr/ic-claude/skills skills
+cp icr/ic-claude/.mcp.json .mcp.json
 ```
 
 ### 2. Set up in your project

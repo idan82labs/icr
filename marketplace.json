@@ -1,0 +1,17 @@
+{
+  "name": "idan82labs",
+  "description": "Plugin marketplace by idan82labs",
+  "owner": {
+    "name": "idan82labs",
+    "url": "https://github.com/idan82labs"
+  },
+  "plugins": [
+    {
+      "name": "icr",
+      "description": "Infinite Context Runtime - Smart code retrieval that gives Claude perfect memory of your codebase",
+      "source": "./ic-claude",
+      "version": "0.1.0",
+      "keywords": ["context", "memory", "retrieval", "codebase", "search", "semantic-search", "embeddings"]
+    }
+  ]
+}
