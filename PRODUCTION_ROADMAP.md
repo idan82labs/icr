@@ -1,29 +1,39 @@
 # ICR Production Roadmap
 
-## Current State (Research Grade)
+## Project Positioning
 
-| Component | Status | Gap |
-|-----------|--------|-----|
-| Hybrid Search (semantic + BM25) | ✅ Working | - |
-| ONNX Embeddings (local) | ✅ Working | - |
-| Knapsack Pack Compiler | ✅ Working | - |
+**ICR = Intelligent Context Retrieval**
+- Smart context packing for Claude Code
+- Semantic search + budget-aware compilation
+- RLM-boosted for scattered results
+
+**What RLM Actually Is**: Query expansion with entropy-based gating. NOT recursive LLM calls.
+
+## Current State
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Hybrid Search (semantic + BM25) | ✅ Working | Core value |
+| ONNX Embeddings (local) | ✅ Working | No API calls |
+| Knapsack Pack Compiler | ✅ Working | Core value |
+| Contract Detection | ✅ Working | Interfaces/types prioritized |
 | .gitignore/.icrignore | ✅ Working | - |
-| File Watcher | ✅ Built | Not auto-started |
-| RLM Planner | ✅ Built | Not wired to MCP |
-| RLM Aggregator | ✅ Built | Not wired to MCP |
-| Entropy Gating | ✅ Built | Not automatic |
-| MCP Tools | ⚠️ Partial | RAG only, no RLM auto-trigger |
-| Skill Integration | ⚠️ Partial | Unreliable auto-invocation |
+| RLM Query Expansion | ✅ Wired | Entropy-gated |
+| MCP Tools | ✅ Working | 12 tools exposed |
+| Skill Integration | ⚠️ Partial | Needs better trigger rules |
+| File Watcher | ⚠️ Built | Not auto-started |
 | Install Experience | ⚠️ Partial | Requires restart |
 
-## Production Target
+## Target User Experience
 
 ```
 User installs ICR → ICR coexists with native tools →
-Claude automatically chooses ICR for complex questions →
-RLM activates for "trace flow" / "plan feature" queries →
+Claude uses ICR for conceptual questions →
+Claude uses native grep/glob for targeted queries →
 User sees what ICR found and why
 ```
+
+**Key principle**: ICR complements native tools, doesn't replace them.
 
 ---
 
@@ -149,12 +159,56 @@ description: Use ICR for understanding code by meaning, not keywords.
 4. **Find symbol by name** → `icr__project_symbol_search`
 ```
 
-### 2.3 Hook Integration (Optional Enhancement)
+### 2.3 Hook Integration (Using Claude Code Hooks System)
 
-Add UserPromptSubmit hook to auto-inject context:
+Claude Code provides 10 hook events. The most useful for ICR:
 
+**Available Hooks:**
+1. `SessionStart` - Initialize ICR context when session starts
+2. `UserPromptSubmit` - Auto-inject ICR context based on user prompts
+3. `PreCompact` - Preserve context before compaction (IMPLEMENTED)
+4. `Stop` - Persist important context at end of turns
+5. `PreToolUse` - Add context before tool execution
+
+**Configuration in `.claude/settings.json`:**
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [{
+          "type": "command",
+          "command": ".icr/venv/bin/python .icr/hooks/session_start.py"
+        }]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [{
+          "type": "command",
+          "command": ".icr/venv/bin/python .icr/hooks/prompt_submit.py"
+        }]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [{
+          "type": "command",
+          "command": ".icr/venv/bin/python .icr/hooks/precompact.py"
+        }]
+      }
+    ]
+  }
+}
+```
+
+**UserPromptSubmit Hook Implementation:**
 ```python
-# ic-claude/scripts/hook_userpromptsubmit.py
+# .icr/hooks/prompt_submit.py
+
+import json
+import re
+import sys
 
 def should_inject_context(prompt: str) -> bool:
     """Detect if prompt would benefit from ICR context."""
@@ -168,11 +222,24 @@ def should_inject_context(prompt: str) -> bool:
     ]
     return any(re.search(p, prompt.lower()) for p in patterns)
 
-async def hook(prompt: str) -> dict:
+def main():
+    input_data = json.loads(sys.stdin.read())
+    prompt = input_data.get("prompt", "")
+
     if should_inject_context(prompt):
-        pack = await icr_memory_pack(prompt, budget=4000)
-        return {"additionalContext": pack.markdown}
-    return {}
+        # Call ICR to get context pack
+        # Output additionalContext to stdout as JSON
+        result = {"additionalContext": "ICR context here..."}
+        print(json.dumps(result))
+
+if __name__ == "__main__":
+    main()
+```
+
+**SessionStart Hook for Index Freshness:**
+```python
+# .icr/hooks/session_start.py
+# Check index freshness, suggest reindex if stale
 ```
 
 ---

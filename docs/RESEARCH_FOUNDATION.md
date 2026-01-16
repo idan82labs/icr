@@ -1,13 +1,13 @@
 # ICR Research Foundation
 
-This document explains the theoretical foundations underlying ICR, including the Recursive Language Models (RLM) paradigm, mathematical formulations, and the rationale for key design decisions.
+This document explains the theoretical foundations underlying ICR's design decisions.
 
 ---
 
 ## Table of Contents
 
 - [Introduction](#introduction)
-- [The RLM Paradigm](#the-rlm-paradigm)
+- [Honest Assessment](#honest-assessment)
 - [Prompt as Environment](#prompt-as-environment)
 - [Bounded Tools and Variance Control](#bounded-tools-and-variance-control)
 - [Non-Generative Aggregation](#non-generative-aggregation)
@@ -19,54 +19,78 @@ This document explains the theoretical foundations underlying ICR, including the
 
 ## Introduction
 
-ICR is built on research from the **Recursive Language Models (RLM)** paradigm, which proposes a fundamentally different approach to handling large contexts in language model applications.
-
-Traditional approaches to context limitations:
-1. **Truncation**: Discard information to fit context window (loses important data)
-2. **Context Extension**: Expand model's context window (expensive, high latency)
-3. **RAG**: Retrieve relevant chunks into context (still bounded by window)
-
-The RLM paradigm introduces a fourth approach:
-
-4. **Environment Interaction**: Treat context as an external environment that the model inspects through bounded operations
+ICR provides **intelligent context retrieval** for Claude Code through:
+1. Hybrid search (semantic + BM25)
+2. Budget-aware context packing (knapsack)
+3. Query expansion when results are scattered (RLM boost)
 
 ---
 
-## The RLM Paradigm
+## Honest Assessment
 
-### Core Concept
+### What "RLM" Means in ICR
 
-In the RLM paradigm, we treat the language model as an **agent** interacting with an **environment** rather than a function mapping input to output.
+ICR uses "RLM" (Retrieval-augmented Language Model) to describe its query expansion feature. **This is NOT the same as canonical Recursive Language Models** (Zhang et al., 2024) which involve LLMs calling themselves recursively.
+
+**ICR's RLM is:**
+- Query decomposition based on heuristics (not LLM calls)
+- Entropy-based gating to decide when to expand
+- Score fusion to aggregate multiple retrieval passes
+- Deterministic, not generative
+
+**What it's closer to:**
+- Multi-query expansion (traditional IR)
+- Iterative retrieval (like FLARE/Self-RAG but without the LLM in the loop)
+
+### ICR vs State-of-the-Art
+
+| Feature | FLARE | Self-RAG | ICR |
+|---------|-------|----------|-----|
+| When to retrieve | Low-confidence tokens | Learned tokens | Entropy threshold |
+| What to retrieve | Upcoming sentence prediction | On-demand | Heuristic decomposition |
+| Self-critique | No | Yes | No |
+| Training required | No | Yes | No |
+| LLM in retrieval loop | Yes | Yes | **No** |
+
+ICR's approach is simpler and doesn't require fine-tuned models, but it also lacks the adaptiveness of learned approaches.
+
+---
+
+## Design Philosophy
+
+### Environment Model
+
+ICR treats the codebase as an environment that Claude inspects through bounded operations:
 
 ```
 Traditional LLM:
     f(prompt) -> response
 
-RLM Paradigm:
-    while not done:
-        action = agent.decide(state)
-        observation = environment.execute(action)
-        state = agent.update(state, observation)
-    return agent.synthesize(state)
+ICR Paradigm:
+    query = user_prompt
+    results = hybrid_search(query)
+    if high_entropy(results):
+        sub_queries = decompose(query)
+        for sq in sub_queries:
+            results += hybrid_search(sq)
+        results = aggregate(results)
+    pack = knapsack_compile(results, budget)
+    return pack
 ```
 
-### Key Principles
+This is **not** true agent-environment interaction (no decision loop), but it provides:
+- Bounded token usage per operation
+- Deterministic results
+- Traceable citations
 
-1. **Symbolic Inspection**: The model inspects specific parts of the environment rather than consuming everything
-2. **Bounded Operations**: Each inspection has explicit bounds (tokens, time, results)
-3. **Iterative Refinement**: Multiple rounds of inspection allow targeted exploration
-4. **Deterministic Environment**: Same queries produce same results (no hidden state)
-
-### Why RLM for Code Understanding?
-
-Codebases are particularly well-suited for the RLM approach:
+### Why This Approach for Code?
 
 | Property | Benefit |
 |----------|---------|
-| **Structure** | Symbol hierarchies enable targeted navigation |
-| **Cross-references** | Dependencies provide natural exploration paths |
+| **Structure** | Symbol hierarchies enable targeted search |
+| **Cross-references** | Dependencies provide context |
 | **Redundancy** | Patterns repeat; one example often suffices |
-| **Semantics** | Code has precise meaning; summarization loses less |
+| **Semantics** | Code has precise meaning; embedding captures intent |
 
 ---
 

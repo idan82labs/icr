@@ -171,43 +171,53 @@ class CompactSnapshot:
 
 
 class ICRClient:
-    """Client for interacting with ICR core services."""
+    """
+    Client for interacting with ICR/ICD services.
+
+    This client extracts context from the transcript file directly since
+    the conversation transcript contains all the information we need to
+    preserve across compaction.
+    """
 
     def __init__(self, config_path: str | None = None):
         """Initialize ICR client."""
+        # Look for .icr config in current directory or home
         self.config_path = config_path or os.environ.get(
             "ICR_CONFIG_PATH",
-            os.path.expanduser("~/.icr/config.yaml")
-        )
-        self.db_path = os.environ.get(
-            "ICR_DB_PATH",
-            os.path.expanduser("~/.icr/icr.db")
+            ".icr/config.yaml"
         )
         self._config: dict[str, Any] | None = None
         self._initialized = False
+        self._compaction_count_file = Path(".icr/compaction_count")
 
     def _ensure_initialized(self) -> bool:
         """Ensure ICR is initialized."""
         if self._initialized:
             return True
 
-        if not Path(self.config_path).exists():
-            logger.warning(f"ICR config not found at {self.config_path}")
-            return False
+        # Try to load config
+        config_paths = [
+            Path(self.config_path),
+            Path(".icr/config.yaml"),
+            Path.home() / ".icr" / "config.yaml",
+        ]
 
-        try:
-            import yaml
-            with open(self.config_path) as f:
-                self._config = yaml.safe_load(f)
-            self._initialized = True
-            return True
-        except ImportError:
-            self._config = {}
-            self._initialized = True
-            return True
-        except Exception as e:
-            logger.warning(f"Failed to load config: {e}")
-            return False
+        for path in config_paths:
+            if path.exists():
+                try:
+                    import yaml
+                    with open(path) as f:
+                        self._config = yaml.safe_load(f) or {}
+                    self._initialized = True
+                    return True
+                except Exception as e:
+                    logger.debug(f"Failed to load config from {path}: {e}")
+                    continue
+
+        # No config found, use defaults
+        self._config = {}
+        self._initialized = True
+        return True
 
     def get_config(self, key: str, default: Any = None) -> Any:
         """Get configuration value."""
@@ -216,159 +226,162 @@ class ICRClient:
         return self._config.get(key, default) if self._config else default
 
     def get_invariants(self) -> list[dict[str, Any]]:
-        """Get all pinned invariants."""
-        if not self._ensure_initialized():
+        """
+        Get pinned invariants from .icr/invariants.json if it exists.
+
+        Users can pin important context by adding to this file.
+        """
+        invariants_path = Path(".icr/invariants.json")
+        if not invariants_path.exists():
             return []
 
         try:
-            from icr.core.invariants import InvariantStore
-            store = InvariantStore(db_path=self.db_path)
-            return store.get_all_active()
-        except ImportError:
-            logger.debug("icr-core not available, skipping invariants")
-            return []
+            import json
+            with open(invariants_path) as f:
+                data = json.load(f)
+            return data.get("invariants", [])
         except Exception as e:
-            logger.warning(f"Failed to get invariants: {e}")
+            logger.debug(f"Failed to load invariants: {e}")
             return []
+
+    def extract_from_transcript(
+        self,
+        transcript_path: str | None,
+    ) -> dict[str, Any]:
+        """
+        Extract key information from the conversation transcript.
+
+        This parses the JSONL transcript to find:
+        - Key files mentioned/modified
+        - Decisions made (from assistant messages)
+        - Active todos (from tool calls)
+        - Open questions
+        """
+        result = {
+            "key_files": [],
+            "decisions": [],
+            "todos": [],
+            "questions": [],
+            "summary": "",
+        }
+
+        if not transcript_path or not Path(transcript_path).exists():
+            return result
+
+        try:
+            import json
+            import re
+
+            files_mentioned: set[str] = set()
+            decisions: list[str] = []
+            todos: list[str] = []
+
+            with open(transcript_path) as f:
+                for line in f:
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+
+                    # Extract file paths from tool calls
+                    if entry.get("type") == "tool_use":
+                        tool_input = entry.get("input", {})
+                        if isinstance(tool_input, dict):
+                            for key in ["file_path", "path", "file"]:
+                                if key in tool_input:
+                                    files_mentioned.add(tool_input[key])
+
+                    # Extract from assistant messages
+                    if entry.get("type") == "text" and entry.get("role") == "assistant":
+                        text = entry.get("text", "")
+
+                        # Look for file paths in the text
+                        path_pattern = r'[`"]?([a-zA-Z0-9_/.-]+\.[a-zA-Z0-9]+)[`"]?'
+                        for match in re.findall(path_pattern, text):
+                            if "/" in match and not match.startswith("http"):
+                                files_mentioned.add(match)
+
+                        # Extract decisions (lines starting with decision-like language)
+                        for line_text in text.split("\n"):
+                            line_lower = line_text.lower().strip()
+                            if any(line_lower.startswith(d) for d in [
+                                "decided", "decision:", "we'll", "i'll", "let's",
+                                "the approach", "using", "implemented"
+                            ]):
+                                if len(line_text) < 200:
+                                    decisions.append(line_text.strip())
+
+                    # Extract todos from TodoWrite tool calls
+                    if entry.get("type") == "tool_use" and entry.get("name") == "TodoWrite":
+                        tool_input = entry.get("input", {})
+                        for todo in tool_input.get("todos", []):
+                            if todo.get("status") in ["pending", "in_progress"]:
+                                todos.append(todo.get("content", ""))
+
+            # Limit and deduplicate
+            result["key_files"] = list(files_mentioned)[:15]
+            result["decisions"] = list(dict.fromkeys(decisions))[:10]  # Dedupe, keep order
+            result["todos"] = todos[:20]
+
+            # Generate summary from decisions
+            if decisions:
+                result["summary"] = "Key activities: " + "; ".join(decisions[:5])
+
+        except Exception as e:
+            logger.warning(f"Failed to extract from transcript: {e}")
+
+        return result
 
     def get_critical_decisions(
         self,
         session_id: str,
         limit: int = 10,
     ) -> list[dict[str, Any]]:
-        """Get critical decisions from the session."""
-        if not self._ensure_initialized():
-            return []
-
-        try:
-            from icr.core.ledger import LedgerStore
-            store = LedgerStore(db_path=self.db_path)
-            entries = store.get_by_type(
-                session_id=session_id,
-                entry_type="decision",
-                limit=limit,
-            )
-            return entries
-        except ImportError:
-            logger.debug("icr-core not available, skipping decisions")
-            return []
-        except Exception as e:
-            logger.warning(f"Failed to get decisions: {e}")
-            return []
+        """Get critical decisions - delegated to transcript extraction."""
+        # This is now handled by extract_from_transcript
+        return []
 
     def get_active_todos(
         self,
         session_id: str,
         limit: int = 20,
     ) -> list[dict[str, Any]]:
-        """Get active (uncompleted) todos from the session."""
-        if not self._ensure_initialized():
-            return []
-
-        try:
-            from icr.core.ledger import LedgerStore
-            store = LedgerStore(db_path=self.db_path)
-            entries = store.get_by_type(
-                session_id=session_id,
-                entry_type="todo",
-                limit=limit,
-            )
-            # Filter to active only (would need completion tracking)
-            return entries
-        except ImportError:
-            logger.debug("icr-core not available, skipping todos")
-            return []
-        except Exception as e:
-            logger.warning(f"Failed to get todos: {e}")
-            return []
+        """Get active todos - delegated to transcript extraction."""
+        return []
 
     def get_open_questions(
         self,
         session_id: str,
         limit: int = 10,
     ) -> list[dict[str, Any]]:
-        """Get open questions from the session."""
-        if not self._ensure_initialized():
-            return []
-
-        try:
-            from icr.core.ledger import LedgerStore
-            store = LedgerStore(db_path=self.db_path)
-            entries = store.get_by_type(
-                session_id=session_id,
-                entry_type="question",
-                limit=limit,
-            )
-            return entries
-        except ImportError:
-            logger.debug("icr-core not available, skipping questions")
-            return []
-        except Exception as e:
-            logger.warning(f"Failed to get questions: {e}")
-            return []
+        """Get open questions - delegated to transcript extraction."""
+        return []
 
     def get_key_files(
         self,
         session_id: str,
         limit: int = 15,
     ) -> list[str]:
-        """Get key files from the session."""
-        if not self._ensure_initialized():
-            return []
-
-        try:
-            from icr.core.ledger import LedgerStore
-            store = LedgerStore(db_path=self.db_path)
-            entries = store.get_by_type(
-                session_id=session_id,
-                entry_type="file",
-                limit=limit,
-            )
-            return [e.get("content", "") for e in entries if e.get("content")]
-        except ImportError:
-            logger.debug("icr-core not available, skipping files")
-            return []
-        except Exception as e:
-            logger.warning(f"Failed to get files: {e}")
-            return []
+        """Get key files - delegated to transcript extraction."""
+        return []
 
     def get_session_info(self, session_id: str) -> dict[str, Any]:
-        """Get session information."""
-        if not self._ensure_initialized():
-            return {}
+        """Get session information from compaction count file."""
+        count = 0
+        if self._compaction_count_file.exists():
+            try:
+                count = int(self._compaction_count_file.read_text().strip())
+            except Exception:
+                pass
 
-        try:
-            from icr.core.sessions import SessionStore
-            store = SessionStore(db_path=self.db_path)
-            return store.get(session_id) or {}
-        except ImportError:
-            logger.debug("icr-core not available, skipping session info")
-            return {}
-        except Exception as e:
-            logger.warning(f"Failed to get session info: {e}")
-            return {}
+        return {
+            "compaction_count": count,
+            "started": "",
+        }
 
     def generate_session_summary(self, session_id: str) -> str:
-        """Generate a summary of the session."""
-        if not self._ensure_initialized():
-            return ""
-
-        try:
-            from icr.core.summarization import SessionSummarizer
-            summarizer = SessionSummarizer(db_path=self.db_path)
-            return summarizer.summarize(session_id)
-        except ImportError:
-            # Provide basic summary from ledger if core not available
-            decisions = self.get_critical_decisions(session_id, limit=5)
-            if decisions:
-                summary_parts = ["Key activities this session:"]
-                for d in decisions[:5]:
-                    summary_parts.append(f"- {d.get('content', '')}")
-                return "\n".join(summary_parts)
-            return ""
-        except Exception as e:
-            logger.warning(f"Failed to generate summary: {e}")
-            return ""
+        """Generate a summary - handled by extract_from_transcript."""
+        return ""
 
     def record_compaction(
         self,
@@ -377,39 +390,37 @@ class ICRClient:
         tokens_before: int,
         tokens_after: int,
     ) -> None:
-        """Record compaction event."""
-        if not self._ensure_initialized():
-            return
+        """Record compaction event to a log file."""
+        log_path = Path(".icr/compaction.log")
+        log_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            from icr.core.metrics import MetricsRecorder
-            recorder = MetricsRecorder(db_path=self.db_path)
-            recorder.record_compaction(
-                session_id=session_id,
-                reason=reason,
-                tokens_before=tokens_before,
-                tokens_after=tokens_after,
-                timestamp=datetime.utcnow(),
-            )
-        except ImportError:
-            logger.debug("icr-core not available, skipping compaction recording")
+            with open(log_path, "a") as f:
+                f.write(
+                    f"{datetime.utcnow().isoformat()} | {reason} | "
+                    f"{tokens_before} -> {tokens_after}\n"
+                )
         except Exception as e:
-            logger.warning(f"Failed to record compaction: {e}")
+            logger.debug(f"Failed to record compaction: {e}")
 
     def increment_compaction_count(self, session_id: str) -> int:
-        """Increment and return the compaction count for this session."""
-        if not self._ensure_initialized():
-            return 0
+        """Increment and return the compaction count."""
+        self._compaction_count_file.parent.mkdir(parents=True, exist_ok=True)
 
+        count = 0
+        if self._compaction_count_file.exists():
+            try:
+                count = int(self._compaction_count_file.read_text().strip())
+            except Exception:
+                pass
+
+        count += 1
         try:
-            from icr.core.sessions import SessionStore
-            store = SessionStore(db_path=self.db_path)
-            return store.increment_compaction_count(session_id)
-        except ImportError:
-            return 0
+            self._compaction_count_file.write_text(str(count))
         except Exception as e:
-            logger.warning(f"Failed to increment compaction count: {e}")
-            return 0
+            logger.debug(f"Failed to write compaction count: {e}")
+
+        return count
 
 
 def build_compact_snapshot(
@@ -420,46 +431,40 @@ def build_compact_snapshot(
     Build a snapshot of critical context to preserve.
 
     This assembles all invariants, decisions, todos, and other
-    critical state that must survive compaction.
+    critical state that must survive compaction by extracting
+    from the conversation transcript.
     """
     snapshot = CompactSnapshot()
 
-    # Always include all invariants
+    # Always include all invariants from .icr/invariants.json
     snapshot.invariants = client.get_invariants()
 
-    # Get critical decisions
-    snapshot.critical_decisions = client.get_critical_decisions(
-        session_id=hook_input.session_id,
-        limit=10,
-    )
+    # Extract context from transcript
+    transcript_data = client.extract_from_transcript(hook_input.transcript_path)
 
-    # Get active todos
-    snapshot.active_todos = client.get_active_todos(
-        session_id=hook_input.session_id,
-        limit=20,
-    )
+    # Convert extracted decisions to the expected format
+    snapshot.critical_decisions = [
+        {"content": d, "timestamp": ""} for d in transcript_data.get("decisions", [])
+    ]
 
-    # Get open questions
-    snapshot.open_questions = client.get_open_questions(
-        session_id=hook_input.session_id,
-        limit=10,
-    )
+    # Convert extracted todos
+    snapshot.active_todos = [
+        {"content": t} for t in transcript_data.get("todos", [])
+    ]
 
-    # Get key files
-    snapshot.key_files = client.get_key_files(
-        session_id=hook_input.session_id,
-        limit=15,
-    )
+    # Open questions (not extracted yet, could be enhanced)
+    snapshot.open_questions = []
 
-    # Get session info
+    # Key files from transcript
+    snapshot.key_files = transcript_data.get("key_files", [])
+
+    # Get session info (compaction count)
     session_info = client.get_session_info(hook_input.session_id)
     snapshot.compaction_count = session_info.get("compaction_count", 0)
     snapshot.original_start = session_info.get("started", "")
 
-    # Generate session summary
-    snapshot.session_summary = client.generate_session_summary(
-        session_id=hook_input.session_id
-    )
+    # Session summary from transcript
+    snapshot.session_summary = transcript_data.get("summary", "")
 
     return snapshot
 

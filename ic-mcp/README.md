@@ -1,6 +1,14 @@
-# IC-MCP: Model Context Protocol Server for ICR
+# IC-MCP: MCP Server for Intelligent Context Retrieval
 
-MCP Server component that exposes safe, bounded tools for Claude Code integration.
+MCP (Model Context Protocol) server that exposes ICR tools to Claude Code.
+
+## What It Does
+
+IC-MCP provides Claude with tools to:
+- Search code semantically (not just keywords)
+- Read specific code sections with line numbers
+- Pack relevant context within token budgets
+- Find symbols, commands, and project structure
 
 ## Installation
 
@@ -8,27 +16,66 @@ MCP Server component that exposes safe, bounded tools for Claude Code integratio
 pip install ic-mcp
 ```
 
-## Usage
-
-Run the MCP server:
+## Run
 
 ```bash
-ic-mcp
+ic-mcp --repo-root /path/to/project
 ```
 
-Or configure in Claude Code's settings.
+Or configure in `.mcp.json` for Claude Code integration.
 
 ## Available Tools
 
-- `env_search` - Unified environment search across code, memory, and context
-- `env_peek` - Quick read of specific items with line numbers
-- `project_symbol_search` - Search for symbols by name/pattern
-- `memory_pack` - Get compiled context pack for a query
-- `rlm_map_reduce` - Execute map-reduce queries when context is uncertain
-- `focus_set/focus_clear` - Manage focus scope for retrieval
-- `memory_pin/memory_unpin` - Pin important chunks
-- `memory_record_decision` - Record architectural decisions
-- And more...
+### Core Search
+| Tool | Purpose |
+|------|---------|
+| `icr__env_search` | Hybrid search (semantic + BM25) |
+| `icr__env_peek` | Read specific lines from a file |
+| `icr__project_symbol_search` | Find functions/classes by name |
+
+### Context Packing
+| Tool | Purpose |
+|------|---------|
+| `icr__memory_pack` | Compile relevant context for a query |
+| `icr__memory_pin` | Pin important files to always include |
+| `icr__memory_stats` | Show index statistics |
+
+### Project Info
+| Tool | Purpose |
+|------|---------|
+| `icr__project_map` | Show directory structure |
+| `icr__project_commands` | Find build/test commands |
+| `icr__project_impact` | Analyze change impact |
+
+## How memory_pack Works
+
+```
+Query → Hybrid Search → Entropy Check
+                            │
+              ┌─────────────┴─────────────┐
+              ▼                           ▼
+        Low Entropy                 High Entropy
+        (confident)                 (scattered)
+              │                           │
+              ▼                           ▼
+        Direct Pack               RLM Query Refinement
+              │                           │
+              └─────────────┬─────────────┘
+                            ▼
+                   Knapsack Compiler
+                   (budget-aware)
+                            │
+                            ▼
+                     Context Pack
+```
+
+**RLM Boost**: When initial retrieval has high entropy (scattered results), ICR refines the query into sub-queries to gather better context.
+
+## Configuration
+
+Environment variables:
+- `ICR_LOG_LEVEL`: DEBUG, INFO, WARNING, ERROR
+- `ICR_LOG_FILE`: Path to log file
 
 ## License
 

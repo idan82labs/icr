@@ -1,79 +1,115 @@
 ---
 name: icr-codebase-memory
-description: Use ICR tools to search and understand the codebase. Invoke when user asks about code, architecture, how things work, or needs context about the project.
+description: Semantic code search and context packing. Use for conceptual questions about unfamiliar codebases. For known symbols or file patterns, prefer native Grep/Glob.
 ---
 
 # ICR Codebase Memory
 
-When the user asks questions about the codebase, use ICR MCP tools to find relevant code before answering.
+Use ICR tools for **semantic** code search - finding code by meaning, not just keywords.
 
-## When to Use ICR
+## When to Use ICR vs Native Tools
 
-Use ICR tools when the user:
-- Asks "how does X work?"
-- Asks "where is X implemented?"
-- Asks "find all usages of X"
-- Asks about architecture or design patterns
-- Needs context before making changes
-- Asks to explain code they haven't shown you
+### Use ICR when:
+- User asks "how does X work?" (conceptual)
+- User asks about architecture or patterns
+- User is exploring unfamiliar code
+- Keywords would return too many/wrong results
+
+### Use Native Tools when:
+- User knows the exact symbol name → use Grep
+- User wants file patterns → use Glob
+- User wants to read a specific file → use Read
+- Simple, targeted queries
+
+**ICR complements native tools, doesn't replace them.**
 
 ## Available Tools
 
-### `icr__project_symbol_search`
-Find functions, classes, methods by name.
+### `icr__memory_pack` (Primary)
+Get compiled context for a query. Uses hybrid search + knapsack packing.
+
 ```json
-{"query": "handleAuth", "repo_root": "."}
+{
+  "prompt": "How does the auth system work?",
+  "repo_root": ".",
+  "budget_tokens": 4000
+}
+```
+
+Returns: Ranked code chunks with file citations.
+
+### `icr__env_search`
+Search across the codebase semantically.
+
+```json
+{
+  "query": "authentication flow",
+  "scope": "code",
+  "repo_root": "."
+}
+```
+
+### `icr__project_symbol_search`
+Find functions/classes by name (when you know the name).
+
+```json
+{
+  "query": "handleAuth",
+  "repo_root": "."
+}
 ```
 
 ### `icr__env_peek`
 Read specific lines from a file.
-```json
-{"path": "src/auth.ts", "start_line": 10, "end_line": 50, "repo_root": "."}
-```
 
-### `icr__env_search`
-Search across the codebase.
 ```json
-{"query": "authentication flow", "scope": "code", "repo_root": "."}
-```
-
-### `icr__memory_pack`
-Get compiled context for a query (requires indexed repo).
-```json
-{"prompt": "How does the auth system work?", "repo_root": ".", "budget_tokens": 4000}
+{
+  "path": "src/auth.ts",
+  "start_line": 10,
+  "end_line": 50,
+  "repo_root": "."
+}
 ```
 
 ### `icr__project_map`
 Show project structure.
-```json
-{"repo_root": ".", "depth": 2, "include_files": true}
-```
 
-### `icr__project_commands`
-Find available build/test commands.
 ```json
-{"repo_root": "."}
+{
+  "repo_root": ".",
+  "depth": 2
+}
 ```
 
 ## Workflow
 
-1. **Understand the question** - What does the user want to know?
-2. **Search first** - Use `project_symbol_search` or `env_search` to find relevant code
-3. **Read the code** - Use `env_peek` to read the actual implementation
-4. **Explain with context** - Reference specific files and line numbers
+1. **Assess the question** - Is this conceptual or targeted?
+2. **Choose tool** - Conceptual → ICR, Known target → Native
+3. **Search** - Use `memory_pack` or `env_search`
+4. **Cite** - Reference specific files and line numbers
 
-## Example
+## Example: Conceptual Question
 
-User: "How does the login flow work?"
+User: "How does the payment flow work?"
 
-1. Search: `icr__project_symbol_search(query="login")`
-2. Found: `LoginController` in `src/auth/login.ts:45`
-3. Read: `icr__env_peek(path="src/auth/login.ts", start_line=45, end_line=100)`
-4. Explain the code with file references
+```
+1. icr__memory_pack(prompt="payment processing flow", budget_tokens=4000)
+2. Review returned chunks
+3. Explain with citations: "The payment flow starts in `src/payments/processor.ts:45`..."
+```
+
+## Example: Known Target
+
+User: "Find the UserService class"
+
+```
+1. Use native Grep: pattern="class UserService"
+   (Faster and more precise than ICR for exact matches)
+```
 
 ## Tips
 
-- Always cite file paths and line numbers: `src/auth/login.ts:45`
-- If ICR isn't set up, suggest `/icr:setup`
-- For complex questions, search multiple times with different queries
-- Use `project_map` first if you don't know the project structure
+- Always cite file paths and line numbers
+- For complex questions, search multiple times with refined queries
+- If results seem scattered, try more specific sub-questions
+- Check `icr__memory_stats` to verify index is up to date

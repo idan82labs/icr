@@ -1,10 +1,8 @@
-# ICR - Infinite Context for Claude Code
+# ICR for Claude Code
 
-Give Claude perfect memory of your codebase with one command.
+Intelligent Context Retrieval integration for Claude Code. Semantic search + smart context packing.
 
-## Install (30 seconds)
-
-In your project directory, run:
+## Install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/idan82labs/icr/main/install.sh | bash
@@ -12,66 +10,50 @@ curl -fsSL https://raw.githubusercontent.com/idan82labs/icr/main/install.sh | ba
 
 Then restart Claude Code.
 
-**That's it.** Just ask questions normally.
+## What ICR Does
 
-## Why ICR?
+ICR helps Claude find relevant code **by meaning, not just keywords**:
 
-Claude Code has Glob, Grep, and Read tools. ICR adds **semantic search** - finding code by *meaning*, not just keywords.
+| You ask | Native tools | With ICR |
+|---------|-------------|----------|
+| "auth code" | Searches for "auth" | Also finds `verifyIdentity()`, `TokenValidator` |
+| "database setup" | Searches for "database" | Also finds `ConnectionPool`, ORM configs |
 
-| You ask | Native tools | ICR |
-|---------|-------------|-----|
-| "auth code" | Searches for "auth" | Finds `verifyIdentity()`, `TokenValidator` |
-| "database setup" | Searches for "database" | Finds `ConnectionPool`, ORM configs |
+## When to Use ICR
 
-Best for: large codebases, unfamiliar projects, "how does X work?" questions.
+**Good for:**
+- Large unfamiliar codebases (1000+ files)
+- Conceptual questions ("how does X work?")
+- When you don't know what to grep for
+- Pattern discovery
+
+**Use native tools for:**
+- Known symbol names (grep is faster)
+- File path patterns (glob is better)
+- Exact string matches
+
+**ICR complements native tools - it doesn't replace them.**
 
 ## How It Works
 
-After installation, Claude automatically uses ICR when you ask about code:
+1. **Index** - Code is chunked and embedded locally (no API calls)
+2. **Search** - Hybrid retrieval: semantic vectors + BM25 keywords
+3. **Pack** - Knapsack compiler fits best code in token budget
+4. **Boost** - RLM refines queries when results are scattered
 
-| You ask | Claude does |
-|---------|-------------|
-| "How does auth work?" | Searches code, reads relevant files, explains |
-| "Where is the DB configured?" | Finds config files, shows you the code |
-| "Find all API endpoints" | Scans codebase, lists them with locations |
-
-No special commands. No syntax to learn. Just ask.
-
-## What's Happening Behind the Scenes
-
-1. **Indexing**: Your code is chunked and embedded locally (no API calls)
-2. **Retrieval**: Questions trigger hybrid search (semantic + keyword)
-3. **Context**: Relevant code is packed into Claude's context window
-4. **Answer**: Claude responds with accurate info citing specific files
-
-All processing happens locally. Your code never leaves your machine.
-
-## Requirements
-
-- Python 3.10+
-- Claude Code
-
-## Re-index After Major Changes
+## Re-index
 
 ```bash
-.icr/venv/bin/icd index --repo-root .
+.icr/venv/bin/icd -p . index
 ```
 
-## Configuration (Optional)
+## Ignore Files
 
-Edit `.icr/config.yaml`:
-
-```yaml
-embedding:
-  model_name: all-MiniLM-L6-v2  # or all-mpnet-base-v2 for better quality
-
-retrieval:
-  weight_embedding: 0.4  # Semantic similarity
-  weight_bm25: 0.3       # Keyword matching
-  weight_recency: 0.1    # Recent files boost
-
-pack:
-  default_budget_tokens: 8000  # Context size per query
+Create `.icrignore`:
+```
+tests/fixtures/
+*.min.js
+node_modules/
 ```
 
 ## Uninstall
@@ -79,3 +61,10 @@ pack:
 ```bash
 rm -rf .icr .mcp.json
 ```
+
+## Honest Limitations
+
+- Uses a small embedding model (384 dimensions) - Claude's native understanding is often better for simple queries
+- Requires re-indexing after major codebase changes
+- ~2GB RAM for the embedding model
+- RLM is query expansion, not true recursive LLM calls
