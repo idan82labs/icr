@@ -3,7 +3,8 @@
 SessionStart Hook Handler for ICR
 
 This hook is invoked when a new Claude Code session starts.
-It checks index freshness and provides context about ICR availability.
+It checks index freshness, triggers incremental reindex if needed,
+and provides context about ICR availability.
 
 Input (via stdin):
 {
@@ -22,6 +23,7 @@ import json
 import logging
 import os
 import sqlite3
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -72,11 +74,13 @@ class HookOutput:
 class IndexFreshness:
     """Index freshness status."""
 
-    status: str  # "fresh", "stale", "missing"
+    status: str  # "fresh", "stale", "missing", "reindexed"
     message: str
     age_days: int = 0
     file_count: int = 0
     chunk_count: int = 0
+    stale_files: int = 0
+    reindexed_files: int = 0
 
 
 def find_index_db(project_root: Path) -> Optional[Path]:
@@ -95,8 +99,88 @@ def find_index_db(project_root: Path) -> Optional[Path]:
     return None
 
 
-def check_index_freshness(project_root: Path) -> IndexFreshness:
-    """Check if index is fresh or stale."""
+def check_file_staleness(project_root: Path) -> tuple[int, int, int]:
+    """
+    Quick check for stale files using icd.indexing.incremental if available.
+
+    Returns (stale_count, new_count, deleted_count).
+    """
+    try:
+        # Try to import the incremental module
+        sys.path.insert(0, str(project_root / ".icr" / "venv" / "lib" / "python3.11" / "site-packages"))
+        sys.path.insert(0, str(project_root / ".icr" / "venv" / "lib" / "python3.10" / "site-packages"))
+        sys.path.insert(0, str(project_root / ".icr" / "venv" / "lib" / "python3.12" / "site-packages"))
+
+        from icd.indexing.incremental import check_staleness
+
+        report = check_staleness(project_root, max_stale_files=100)
+        return report.stale_files, report.new_files, report.deleted_files
+
+    except ImportError:
+        logger.debug("icd.indexing.incremental not available")
+        return 0, 0, 0
+    except Exception as e:
+        logger.debug(f"Error checking staleness: {e}")
+        return 0, 0, 0
+
+
+def trigger_incremental_reindex(project_root: Path, max_files: int = 20) -> int:
+    """
+    Trigger incremental reindex for stale files.
+
+    Returns number of files reindexed.
+    """
+    try:
+        # Try using the Python API directly
+        sys.path.insert(0, str(project_root / ".icr" / "venv" / "lib" / "python3.11" / "site-packages"))
+        sys.path.insert(0, str(project_root / ".icr" / "venv" / "lib" / "python3.10" / "site-packages"))
+        sys.path.insert(0, str(project_root / ".icr" / "venv" / "lib" / "python3.12" / "site-packages"))
+
+        from icd.indexing.incremental import run_incremental_reindex
+
+        stats = run_incremental_reindex(project_root, max_files=max_files)
+        return stats.get("files", 0)
+
+    except ImportError:
+        logger.debug("icd.indexing.incremental not available, trying CLI")
+
+        # Fallback to CLI
+        try:
+            icd_path = project_root / ".icr" / "venv" / "bin" / "icd"
+            if not icd_path.exists():
+                return 0
+
+            result = subprocess.run(
+                [str(icd_path), "-p", str(project_root), "index"],
+                capture_output=True,
+                text=True,
+                timeout=60,  # 1 minute timeout
+            )
+
+            if result.returncode == 0:
+                # Parse output for file count
+                for line in result.stdout.split("\n"):
+                    if "Indexed" in line and "files" in line:
+                        try:
+                            return int(line.split()[1])
+                        except (IndexError, ValueError):
+                            pass
+                return 1  # At least indicate something was done
+
+        except subprocess.TimeoutExpired:
+            logger.warning("Reindex timed out")
+        except Exception as e:
+            logger.warning(f"CLI reindex failed: {e}")
+
+        return 0
+
+    except Exception as e:
+        logger.warning(f"Incremental reindex failed: {e}")
+        return 0
+
+
+def check_index_freshness(project_root: Path, auto_reindex: bool = True) -> IndexFreshness:
+    """Check if index is fresh or stale, optionally trigger reindex."""
     db_path = find_index_db(project_root)
 
     if db_path is None:
@@ -114,6 +198,31 @@ def check_index_freshness(project_root: Path) -> IndexFreshness:
         # Get index stats
         file_count, chunk_count = get_index_stats(db_path)
 
+        # Check for stale files (modified since last index)
+        stale_count, new_count, deleted_count = check_file_staleness(project_root)
+        total_stale = stale_count + new_count + deleted_count
+
+        # If files are stale and auto_reindex is enabled, reindex them
+        reindexed_files = 0
+        if total_stale > 0 and auto_reindex:
+            logger.info(f"Found {total_stale} stale files, triggering incremental reindex")
+            reindexed_files = trigger_incremental_reindex(project_root, max_files=20)
+
+            if reindexed_files > 0:
+                # Refresh stats after reindex
+                file_count, chunk_count = get_index_stats(db_path)
+
+                return IndexFreshness(
+                    status="reindexed",
+                    message=f"Auto-reindexed {reindexed_files} changed files.",
+                    age_days=age_days,
+                    file_count=file_count,
+                    chunk_count=chunk_count,
+                    stale_files=total_stale,
+                    reindexed_files=reindexed_files,
+                )
+
+        # Check if index is old (>7 days)
         if age > timedelta(days=7):
             return IndexFreshness(
                 status="stale",
@@ -121,6 +230,18 @@ def check_index_freshness(project_root: Path) -> IndexFreshness:
                 age_days=age_days,
                 file_count=file_count,
                 chunk_count=chunk_count,
+                stale_files=total_stale,
+            )
+
+        # Check if there are stale files that couldn't be reindexed
+        if total_stale > 0:
+            return IndexFreshness(
+                status="stale",
+                message=f"{total_stale} files changed since last index. Run `icr index` to update.",
+                age_days=age_days,
+                file_count=file_count,
+                chunk_count=chunk_count,
+                stale_files=total_stale,
             )
 
         return IndexFreshness(
@@ -176,12 +297,14 @@ def get_index_stats(db_path: Path) -> tuple[int, int]:
 
 def build_context(freshness: IndexFreshness) -> str:
     """Build additional context message based on index freshness."""
-    if freshness.status != "fresh":
+    if freshness.status not in ("fresh", "reindexed"):
         return ""
 
     parts = ["## ICR Available"]
 
-    if freshness.age_days == 0:
+    if freshness.status == "reindexed":
+        parts.append(f"ICR auto-reindexed {freshness.reindexed_files} changed files on session start.")
+    elif freshness.age_days == 0:
         parts.append(f"ICR semantic search is ready. Index is up to date.")
     else:
         parts.append(f"ICR semantic search is ready. Index is {freshness.age_days} day(s) old.")

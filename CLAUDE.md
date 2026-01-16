@@ -86,10 +86,23 @@ pack:
   default_budget_tokens: 8000
 ```
 
+## Auto-Reindexing
+
+ICR automatically keeps the index fresh:
+
+1. **On Session Start**: Checks for stale files and reindexes up to 20 changed files
+2. **Git Hooks** (optional): Reindex after `git checkout`, `git merge`, `git pull`
+3. **File Watcher** (daemon mode): Real-time updates via `icd watch`
+
+Install git hooks:
+```bash
+curl -fsSL https://raw.githubusercontent.com/idan82labs/icr/main/scripts/install_git_hooks.sh | bash
+```
+
 ## Honest Limitations
 
 - Small embedding model (384 dimensions) - Claude's native understanding is often better for simple queries
-- Requires re-indexing after major codebase changes
+- Auto-reindex handles up to 20 files per session; run `icr index` for major changes
 - ~2GB RAM for embedding model
 - RLM is query expansion, not true recursive LLM calls
 - Entropy-based gating uses magic thresholds (not learned)

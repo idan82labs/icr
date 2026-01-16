@@ -181,6 +181,33 @@ else
     echo "  Created .gitignore with .icr/"
 fi
 
+# Install git hooks for auto-reindex (if in a git repo)
+if [ -d ".git" ]; then
+    echo ""
+    echo "Optional: Install git hooks for auto-reindex?"
+    echo "  This will reindex after git checkout/merge/pull."
+
+    # Check if running interactively
+    if [ -t 0 ]; then
+        read -p "  Install git hooks? [y/N] " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            # Download and run git hooks installer
+            if [ -f "scripts/install_git_hooks.sh" ]; then
+                bash scripts/install_git_hooks.sh
+            else
+                echo "  Downloading git hooks installer..."
+                curl -fsSL https://raw.githubusercontent.com/idan82labs/icr/main/scripts/install_git_hooks.sh | bash
+            fi
+        else
+            echo "  Skipped. Run later with: curl -fsSL https://raw.githubusercontent.com/idan82labs/icr/main/scripts/install_git_hooks.sh | bash"
+        fi
+    else
+        echo "  (Non-interactive mode - skipping)"
+        echo "  Run later: curl -fsSL https://raw.githubusercontent.com/idan82labs/icr/main/scripts/install_git_hooks.sh | bash"
+    fi
+fi
+
 echo ""
 echo "========================================"
 echo "  ICR installed successfully!"
@@ -193,8 +220,12 @@ echo "     - 'How does the auth system work?'"
 echo "     - 'Where is the database connection?'"
 echo "     - 'Find all usages of UserService'"
 echo ""
+echo "Auto-reindex:"
+echo "  - On session start: ICR checks for changed files"
+echo "  - With git hooks: Reindex after checkout/merge/pull"
+echo ""
 echo "For known symbols, use native Grep/Glob (faster)."
 echo "For conceptual questions, ICR shines!"
 echo ""
-echo "To update ICR later: curl -fsSL https://raw.githubusercontent.com/idan82labs/icr/main/install.sh | bash"
+echo "To update ICR: curl -fsSL https://raw.githubusercontent.com/idan82labs/icr/main/install.sh | bash"
 echo ""
