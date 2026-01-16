@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/rlm_plan.input.schema.json",
+  "title": "rlm_plan Input",
+  "description": "Input schema for the rlm_plan MCP tool",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "task": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Natural language description of the task"
+    },
+    "scope": {
+      "type": "string",
+      "enum": ["repo", "contracts", "diffs", "all"],
+      "description": "Scope for the RLM operations"
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_steps": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20,
+          "description": "Maximum number of steps in the plan"
+        },
+        "max_peek_lines": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 2000,
+          "description": "Maximum lines to peek across all steps"
+        },
+        "max_candidates": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 200,
+          "description": "Maximum candidate results to consider"
+        }
+      },
+      "required": ["max_steps", "max_peek_lines", "max_candidates"],
+      "description": "Resource budget for the plan"
+    }
+  },
+  "required": ["task", "scope", "budget"]
+}

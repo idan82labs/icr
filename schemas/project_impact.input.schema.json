@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/project_impact.input.schema.json",
+  "title": "project_impact Input",
+  "description": "Input schema for the project_impact MCP tool",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "changed_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 200,
+      "description": "Paths that have changed or will change"
+    },
+    "query": {
+      "type": "string",
+      "description": "Natural language description of the change"
+    },
+    "max_nodes": {
+      "type": "integer",
+      "minimum": 10,
+      "maximum": 500,
+      "description": "Maximum number of nodes in the impact graph"
+    },
+    "max_edges": {
+      "type": "integer",
+      "minimum": 10,
+      "maximum": 2000,
+      "description": "Maximum number of edges in the impact graph"
+    }
+  }
+}

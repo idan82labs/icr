@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/project_commands.input.schema.json",
+  "title": "project_commands Input",
+  "description": "Input schema for the project_commands MCP tool",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "repo_root": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Absolute path to the repository root"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["build", "test", "lint", "format", "dev", "deploy", "other", "all"],
+      "description": "Filter by command category"
+    },
+    "include_makefiles": {
+      "type": "boolean",
+      "description": "Include commands from Makefiles"
+    },
+    "include_package_json": {
+      "type": "boolean",
+      "description": "Include npm scripts from package.json"
+    },
+    "include_ci": {
+      "type": "boolean",
+      "description": "Include commands from CI configuration"
+    },
+    "refresh": {
+      "type": "boolean",
+      "description": "Force refresh of command discovery"
+    }
+  },
+  "required": ["repo_root"]
+}

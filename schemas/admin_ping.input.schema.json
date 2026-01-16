@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/admin_ping.input.schema.json",
+  "title": "admin_ping Input",
+  "description": "Input schema for the admin_ping MCP tool",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "include_stats": {
+      "type": "boolean",
+      "description": "Include system statistics in response"
+    },
+    "include_version": {
+      "type": "boolean",
+      "description": "Include version information in response"
+    },
+    "check_index": {
+      "type": "boolean",
+      "description": "Check index health"
+    },
+    "check_memory": {
+      "type": "boolean",
+      "description": "Check memory subsystem health"
+    }
+  }
+}

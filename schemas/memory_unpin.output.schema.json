@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/memory_unpin.output.schema.json",
+  "title": "memory_unpin Output",
+  "description": "Output schema for the memory_unpin MCP tool",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        },
+        "request_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "removed": {
+          "type": "boolean",
+          "description": "Whether a pin was actually removed"
+        },
+        "pin_id": {
+          "type": "string",
+          "description": "ID of the removed pin (if any)"
+        }
+      },
+      "required": ["ok", "request_id", "removed"]
+    },
+    {
+      "$ref": "common.schema.json#/$defs/ErrorEnvelope"
+    }
+  ]
+}

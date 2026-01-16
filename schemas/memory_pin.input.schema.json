@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/memory_pin.input.schema.json",
+  "title": "memory_pin Input",
+  "description": "Input schema for the memory_pin MCP tool",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "scope": {
+      "$ref": "common.schema.json#/$defs/MemoryScope",
+      "description": "Scope of the pin"
+    },
+    "key": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "description": "Human-readable key for the pin"
+    },
+    "value": {
+      "description": "The value to pin (any JSON value)"
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/Evidence"
+      },
+      "description": "Supporting evidence for the pin"
+    },
+    "ttl_seconds": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 86400,
+      "description": "Time-to-live in seconds (0 = session lifetime)"
+    }
+  },
+  "required": ["scope", "key", "value"]
+}

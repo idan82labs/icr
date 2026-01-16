@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/env_aggregate.input.schema.json",
+  "title": "env_aggregate Input",
+  "description": "Input schema for the env_aggregate MCP tool",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "scope": {
+      "$ref": "common.schema.json#/$defs/SearchScope",
+      "description": "Scope to aggregate over"
+    },
+    "group_by": {
+      "type": "string",
+      "enum": ["path", "language", "source_type", "directory", "extension"],
+      "description": "Field to group by"
+    },
+    "function": {
+      "$ref": "common.schema.json#/$defs/AggregationFunction",
+      "description": "Aggregation function to apply"
+    },
+    "field": {
+      "type": "string",
+      "description": "Field to aggregate (for sum, avg, min, max)"
+    },
+    "filter": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path_prefix": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string"
+        },
+        "time_window_seconds": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "description": "Filter criteria before aggregation"
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "description": "Maximum number of groups to return"
+    }
+  },
+  "required": ["scope", "group_by", "function"]
+}

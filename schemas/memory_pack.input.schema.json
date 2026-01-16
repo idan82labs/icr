@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/memory_pack.input.schema.json",
+  "title": "memory_pack Input",
+  "description": "Input schema for the memory_pack MCP tool",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "mode": {
+      "type": "string",
+      "enum": ["auto", "pack", "rlm"],
+      "description": "Pack mode: auto (intelligent selection), pack (fast retrieval), rlm (deep reasoning)"
+    },
+    "prompt": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The user's query or task description"
+    },
+    "repo_root": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Absolute path to the repository root"
+    },
+    "budget_tokens": {
+      "type": "integer",
+      "minimum": 512,
+      "maximum": 12000,
+      "description": "Maximum tokens to include in the context pack"
+    },
+    "k": {
+      "type": "integer",
+      "minimum": 5,
+      "maximum": 50,
+      "description": "Number of top results to retrieve"
+    },
+    "focus_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 50,
+      "description": "Paths to prioritize in retrieval"
+    },
+    "pinned_only": {
+      "type": "boolean",
+      "description": "Only include pinned memory items"
+    }
+  },
+  "required": ["mode", "prompt", "repo_root"]
+}

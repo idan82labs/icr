@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/env_search.output.schema.json",
+  "title": "env_search Output",
+  "description": "Output schema for the env_search MCP tool",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        },
+        "request_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "evidence": {
+                "$ref": "common.schema.json#/$defs/Evidence"
+              },
+              "score": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Relevance score"
+              },
+              "explanation": {
+                "type": "string",
+                "description": "Why this result matched (if explain=true)"
+              }
+            },
+            "required": ["evidence", "score"]
+          },
+          "description": "Search results"
+        },
+        "total_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total number of matching results"
+        },
+        "next_cursor": {
+          "type": "string",
+          "description": "Cursor for the next page"
+        },
+        "search_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Search duration in milliseconds"
+        }
+      },
+      "required": ["ok", "request_id", "results", "total_count"]
+    },
+    {
+      "$ref": "common.schema.json#/$defs/ErrorEnvelope"
+    }
+  ]
+}

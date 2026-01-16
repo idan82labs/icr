@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/project_map.output.schema.json",
+  "title": "project_map Output",
+  "description": "Output schema for the project_map MCP tool",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        },
+        "request_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "tree": {
+          "$ref": "#/$defs/TreeNode",
+          "description": "Project directory tree"
+        },
+        "stats": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "total_files": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "total_directories": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "total_lines": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "total_bytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "by_language": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "files": { "type": "integer", "minimum": 0 },
+                  "lines": { "type": "integer", "minimum": 0 },
+                  "bytes": { "type": "integer", "minimum": 0 }
+                },
+                "required": ["files", "lines", "bytes"]
+              }
+            }
+          },
+          "description": "Project statistics (if include_stats=true)"
+        },
+        "indexed_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the map was generated"
+        }
+      },
+      "required": ["ok", "request_id", "tree"]
+    },
+    {
+      "$ref": "common.schema.json#/$defs/ErrorEnvelope"
+    }
+  ],
+  "$defs": {
+    "TreeNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "File or directory name"
+        },
+        "path": {
+          "type": "string",
+          "description": "Relative path from repo root"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["file", "directory"],
+          "description": "Node type"
+        },
+        "language": {
+          "type": "string",
+          "description": "Detected programming language (for files)"
+        },
+        "lines": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of lines (for files)"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "File size in bytes"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TreeNode"
+          },
+          "description": "Child nodes (for directories)"
+        }
+      },
+      "required": ["name", "path", "type"]
+    }
+  }
+}

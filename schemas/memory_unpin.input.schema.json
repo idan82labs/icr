@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/memory_unpin.input.schema.json",
+  "title": "memory_unpin Input",
+  "description": "Input schema for the memory_unpin MCP tool",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "pin_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique identifier of the pin to remove"
+    },
+    "scope": {
+      "$ref": "common.schema.json#/$defs/MemoryScope",
+      "description": "Scope to search for the pin"
+    },
+    "key": {
+      "type": "string",
+      "description": "Alternative: remove by key instead of pin_id"
+    }
+  },
+  "oneOf": [
+    {
+      "required": ["pin_id"]
+    },
+    {
+      "required": ["scope", "key"]
+    }
+  ]
+}

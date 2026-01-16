@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/env_peek.input.schema.json",
+  "title": "env_peek Input",
+  "description": "Input schema for the env_peek MCP tool",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "File path to peek"
+    },
+    "span": {
+      "$ref": "common.schema.json#/$defs/Span",
+      "description": "Line range to retrieve"
+    },
+    "context_lines": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 50,
+      "description": "Number of context lines before/after span"
+    },
+    "include_symbols": {
+      "type": "boolean",
+      "description": "Include symbol information for the span"
+    },
+    "repo_root": {
+      "type": "string",
+      "description": "Repository root (if path is relative)"
+    }
+  },
+  "required": ["path"]
+}

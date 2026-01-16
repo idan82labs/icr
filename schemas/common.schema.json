@@ -1,0 +1,425 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/common.schema.json",
+  "title": "ICR Common Schema Definitions",
+  "description": "Shared types for ICR MCP tool inputs and outputs",
+
+  "$defs": {
+    "Error": {
+      "type": "object",
+      "description": "Error object containing details about the failure",
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Machine-readable error code"
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable error message"
+        },
+        "retryable": {
+          "type": "boolean",
+          "description": "Whether the operation can be retried"
+        },
+        "details": {
+          "type": "object",
+          "description": "Additional error context",
+          "additionalProperties": true
+        }
+      },
+      "required": ["code", "message", "retryable"]
+    },
+
+    "ErrorEnvelope": {
+      "type": "object",
+      "description": "Standard error response envelope",
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": false
+        },
+        "error": {
+          "$ref": "#/$defs/Error"
+        },
+        "request_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique identifier for the request"
+        }
+      },
+      "required": ["ok", "error", "request_id"]
+    },
+
+    "SuccessEnvelope": {
+      "type": "object",
+      "description": "Standard success response envelope base",
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        },
+        "request_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique identifier for the request"
+        }
+      },
+      "required": ["ok", "request_id"]
+    },
+
+    "Span": {
+      "type": "object",
+      "description": "Line range within a file",
+      "additionalProperties": false,
+      "properties": {
+        "start_line": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Starting line number (1-indexed)"
+        },
+        "end_line": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Ending line number (1-indexed, inclusive)"
+        }
+      },
+      "required": ["start_line", "end_line"]
+    },
+
+    "SourceType": {
+      "type": "string",
+      "enum": ["file", "diff", "transcript", "contract", "index"],
+      "description": "Type of source for evidence"
+    },
+
+    "Evidence": {
+      "type": "object",
+      "description": "Evidence object containing source information and content",
+      "additionalProperties": false,
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "description": "Unique identifier for the source (e.g., S1, S2)"
+        },
+        "source_type": {
+          "$ref": "#/$defs/SourceType"
+        },
+        "path": {
+          "type": "string",
+          "description": "File path relative to repository root"
+        },
+        "repo_rev": {
+          "type": "string",
+          "description": "Git SHA or 'working-tree' for uncommitted changes"
+        },
+        "span": {
+          "$ref": "#/$defs/Span"
+        },
+        "mtime": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last modification time (RFC3339)"
+        },
+        "indexed_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Time when this evidence was indexed (RFC3339)"
+        },
+        "content": {
+          "type": "string",
+          "description": "The actual content of the evidence"
+        }
+      },
+      "required": ["source_id", "source_type", "path", "content"]
+    },
+
+    "PaginationCursor": {
+      "type": "string",
+      "description": "Opaque cursor for pagination"
+    },
+
+    "RequestId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique request identifier"
+    },
+
+    "RepoRoot": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Absolute path to repository root"
+    },
+
+    "FilePath": {
+      "type": "string",
+      "minLength": 1,
+      "description": "File path (relative or absolute)"
+    },
+
+    "MemoryScope": {
+      "type": "string",
+      "enum": ["session", "project", "global"],
+      "description": "Scope of memory pin"
+    },
+
+    "SearchScope": {
+      "type": "string",
+      "enum": ["repo", "transcript", "diffs", "contracts", "all"],
+      "description": "Scope for environment search"
+    },
+
+    "RlmScope": {
+      "type": "string",
+      "enum": ["repo", "contracts", "diffs", "all"],
+      "description": "Scope for RLM operations"
+    },
+
+    "ImpactNodeType": {
+      "type": "string",
+      "enum": ["contract", "endpoint", "shared_type", "fe_client", "fe_component", "be_handler", "test", "file"],
+      "description": "Type of node in impact graph"
+    },
+
+    "ImpactEdgeType": {
+      "type": "string",
+      "enum": ["uses", "imports", "serializes", "deserializes", "routes_to", "tests"],
+      "description": "Type of edge in impact graph"
+    },
+
+    "ImpactNode": {
+      "type": "object",
+      "description": "Node in the impact graph",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique node identifier"
+        },
+        "type": {
+          "$ref": "#/$defs/ImpactNodeType"
+        },
+        "path": {
+          "type": "string",
+          "description": "File path for this node"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name"
+        },
+        "span": {
+          "$ref": "#/$defs/Span"
+        }
+      },
+      "required": ["id", "type", "path"]
+    },
+
+    "ImpactEdge": {
+      "type": "object",
+      "description": "Edge in the impact graph",
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "type": "string",
+          "description": "Source node ID"
+        },
+        "to": {
+          "type": "string",
+          "description": "Target node ID"
+        },
+        "type": {
+          "$ref": "#/$defs/ImpactEdgeType"
+        },
+        "weight": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Edge weight/confidence"
+        }
+      },
+      "required": ["from", "to", "type"]
+    },
+
+    "SymbolKind": {
+      "type": "string",
+      "enum": ["function", "class", "interface", "type", "variable", "constant", "method", "property", "enum", "module", "namespace"],
+      "description": "Kind of symbol"
+    },
+
+    "Symbol": {
+      "type": "object",
+      "description": "A code symbol",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Symbol name"
+        },
+        "kind": {
+          "$ref": "#/$defs/SymbolKind"
+        },
+        "path": {
+          "type": "string",
+          "description": "File path containing the symbol"
+        },
+        "span": {
+          "$ref": "#/$defs/Span"
+        },
+        "signature": {
+          "type": "string",
+          "description": "Type signature or definition"
+        },
+        "doc": {
+          "type": "string",
+          "description": "Documentation comment"
+        }
+      },
+      "required": ["name", "kind", "path"]
+    },
+
+    "Command": {
+      "type": "object",
+      "description": "A discovered project command",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Command name"
+        },
+        "command": {
+          "type": "string",
+          "description": "The actual command to run"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description"
+        },
+        "source": {
+          "type": "string",
+          "description": "Where this command was discovered from"
+        },
+        "category": {
+          "type": "string",
+          "enum": ["build", "test", "lint", "format", "dev", "deploy", "other"],
+          "description": "Command category"
+        }
+      },
+      "required": ["name", "command"]
+    },
+
+    "RlmStep": {
+      "type": "object",
+      "description": "A step in an RLM plan",
+      "additionalProperties": false,
+      "properties": {
+        "step_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Step sequence number"
+        },
+        "action": {
+          "type": "string",
+          "enum": ["search", "peek", "slice", "aggregate", "map", "reduce"],
+          "description": "Action to perform"
+        },
+        "params": {
+          "type": "object",
+          "description": "Parameters for the action",
+          "additionalProperties": true
+        },
+        "rationale": {
+          "type": "string",
+          "description": "Why this step is needed"
+        },
+        "depends_on": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "description": "Step IDs this step depends on"
+        }
+      },
+      "required": ["step_id", "action", "params", "rationale"]
+    },
+
+    "MemoryEntry": {
+      "type": "object",
+      "description": "A pinned memory entry",
+      "additionalProperties": false,
+      "properties": {
+        "pin_id": {
+          "type": "string",
+          "description": "Unique identifier for the pin"
+        },
+        "scope": {
+          "$ref": "#/$defs/MemoryScope"
+        },
+        "key": {
+          "type": "string",
+          "description": "Human-readable key"
+        },
+        "value": {
+          "description": "The pinned value (any JSON)"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "description": "Supporting evidence"
+        },
+        "pinned_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this was pinned (RFC3339)"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this pin expires (RFC3339)"
+        },
+        "ttl_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Time-to-live in seconds"
+        }
+      },
+      "required": ["pin_id", "scope", "key", "value", "pinned_at"]
+    },
+
+    "AggregationFunction": {
+      "type": "string",
+      "enum": ["count", "sum", "avg", "min", "max", "distinct", "histogram"],
+      "description": "Aggregation function type"
+    },
+
+    "Budget": {
+      "type": "object",
+      "description": "Resource budget for RLM operations",
+      "additionalProperties": false,
+      "properties": {
+        "max_steps": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20,
+          "description": "Maximum number of steps"
+        },
+        "max_peek_lines": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 2000,
+          "description": "Maximum lines to peek"
+        },
+        "max_candidates": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 200,
+          "description": "Maximum candidate results"
+        }
+      },
+      "required": ["max_steps", "max_peek_lines", "max_candidates"]
+    }
+  }
+}

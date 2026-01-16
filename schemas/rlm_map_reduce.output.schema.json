@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/rlm_map_reduce.output.schema.json",
+  "title": "rlm_map_reduce Output",
+  "description": "Output schema for the rlm_map_reduce MCP tool",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        },
+        "request_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "result": {
+          "type": "string",
+          "description": "Final reduced result"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/Evidence"
+          },
+          "description": "Evidence supporting the result"
+        },
+        "intermediate_results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "source_id": {
+                "type": "string"
+              },
+              "map_result": {
+                "type": "string"
+              }
+            },
+            "required": ["source_id", "map_result"]
+          },
+          "description": "Intermediate map results (if include_intermediate=true)"
+        },
+        "stats": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "sources_processed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "map_calls": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "reduce_calls": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "total_tokens": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "duration_ms": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "description": "Execution statistics"
+        },
+        "plan_id": {
+          "type": "string",
+          "description": "Plan ID used (if applicable)"
+        }
+      },
+      "required": ["ok", "request_id", "result", "evidence"]
+    },
+    {
+      "$ref": "common.schema.json#/$defs/ErrorEnvelope"
+    }
+  ]
+}

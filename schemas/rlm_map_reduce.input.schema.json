@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/rlm_map_reduce.input.schema.json",
+  "title": "rlm_map_reduce Input",
+  "description": "Input schema for the rlm_map_reduce MCP tool",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "plan_id": {
+      "type": "string",
+      "description": "ID of a previously generated plan to execute"
+    },
+    "task": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Task description (if not using a plan_id)"
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/Evidence"
+      },
+      "description": "Evidence sources to map over"
+    },
+    "map_prompt": {
+      "type": "string",
+      "description": "Prompt template for the map phase"
+    },
+    "reduce_prompt": {
+      "type": "string",
+      "description": "Prompt template for the reduce phase"
+    },
+    "budget": {
+      "$ref": "common.schema.json#/$defs/Budget",
+      "description": "Resource budget (if not using a plan_id)"
+    },
+    "parallel": {
+      "type": "boolean",
+      "description": "Execute map operations in parallel"
+    },
+    "include_intermediate": {
+      "type": "boolean",
+      "description": "Include intermediate map results in output"
+    }
+  },
+  "oneOf": [
+    {
+      "required": ["plan_id"]
+    },
+    {
+      "required": ["task", "sources"]
+    }
+  ]
+}

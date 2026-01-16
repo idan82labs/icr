@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/memory_pin.output.schema.json",
+  "title": "memory_pin Output",
+  "description": "Output schema for the memory_pin MCP tool",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        },
+        "request_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "pin_id": {
+          "type": "string",
+          "description": "Unique identifier for the created pin"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the pin will expire (RFC3339)"
+        }
+      },
+      "required": ["ok", "request_id", "pin_id"]
+    },
+    {
+      "$ref": "common.schema.json#/$defs/ErrorEnvelope"
+    }
+  ]
+}

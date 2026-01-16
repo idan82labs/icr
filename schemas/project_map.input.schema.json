@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/project_map.input.schema.json",
+  "title": "project_map Input",
+  "description": "Input schema for the project_map MCP tool",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "repo_root": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Absolute path to the repository root"
+    },
+    "depth": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10,
+      "description": "Maximum depth for directory traversal"
+    },
+    "include_hidden": {
+      "type": "boolean",
+      "description": "Include hidden files and directories"
+    },
+    "include_stats": {
+      "type": "boolean",
+      "description": "Include file statistics (lines, size)"
+    },
+    "focus_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 50,
+      "description": "Paths to focus on with more detail"
+    },
+    "exclude_patterns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 50,
+      "description": "Glob patterns to exclude"
+    }
+  },
+  "required": ["repo_root"]
+}

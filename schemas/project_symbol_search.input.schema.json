@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/project_symbol_search.input.schema.json",
+  "title": "project_symbol_search Input",
+  "description": "Input schema for the project_symbol_search MCP tool",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "query": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Symbol name or pattern to search"
+    },
+    "kind": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/SymbolKind"
+      },
+      "description": "Filter by symbol kind(s)"
+    },
+    "path_prefix": {
+      "type": "string",
+      "description": "Filter by path prefix"
+    },
+    "language": {
+      "type": "string",
+      "description": "Filter by programming language"
+    },
+    "include_references": {
+      "type": "boolean",
+      "description": "Include references to the symbol"
+    },
+    "include_definition": {
+      "type": "boolean",
+      "description": "Include the symbol definition content"
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "description": "Maximum number of results"
+    },
+    "repo_root": {
+      "type": "string",
+      "description": "Repository root"
+    }
+  },
+  "required": ["query"]
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/memory_list.input.schema.json",
+  "title": "memory_list Input",
+  "description": "Input schema for the memory_list MCP tool",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "scope": {
+      "$ref": "common.schema.json#/$defs/MemoryScope",
+      "description": "Filter by scope"
+    },
+    "key_prefix": {
+      "type": "string",
+      "description": "Filter by key prefix"
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "description": "Maximum number of entries to return"
+    },
+    "cursor": {
+      "type": "string",
+      "description": "Pagination cursor"
+    },
+    "include_expired": {
+      "type": "boolean",
+      "description": "Include expired entries"
+    }
+  }
+}

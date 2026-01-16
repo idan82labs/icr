@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/memory_get.input.schema.json",
+  "title": "memory_get Input",
+  "description": "Input schema for the memory_get MCP tool",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "pin_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique identifier of the pin to retrieve"
+    },
+    "scope": {
+      "$ref": "common.schema.json#/$defs/MemoryScope",
+      "description": "Scope to search for the pin"
+    },
+    "key": {
+      "type": "string",
+      "description": "Alternative: retrieve by key instead of pin_id"
+    }
+  },
+  "oneOf": [
+    {
+      "required": ["pin_id"]
+    },
+    {
+      "required": ["scope", "key"]
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/project_commands.output.schema.json",
+  "title": "project_commands Output",
+  "description": "Output schema for the project_commands MCP tool",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        },
+        "request_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "commands": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/Command"
+          },
+          "description": "Discovered commands"
+        },
+        "by_category": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "$ref": "common.schema.json#/$defs/Command"
+            }
+          },
+          "description": "Commands grouped by category"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": ["package.json", "Makefile", "Taskfile", "CI", "Dockerfile", "other"]
+              },
+              "command_count": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": ["path", "type", "command_count"]
+          },
+          "description": "Sources where commands were discovered"
+        },
+        "discovered_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the commands were discovered"
+        }
+      },
+      "required": ["ok", "request_id", "commands"]
+    },
+    {
+      "$ref": "common.schema.json#/$defs/ErrorEnvelope"
+    }
+  ]
+}

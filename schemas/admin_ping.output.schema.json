@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/admin_ping.output.schema.json",
+  "title": "admin_ping Output",
+  "description": "Output schema for the admin_ping MCP tool",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        },
+        "request_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "pong": {
+          "type": "boolean",
+          "const": true,
+          "description": "Indicates server is alive"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp"
+        },
+        "version": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "icr": {
+              "type": "string",
+              "description": "ICR version"
+            },
+            "mcp": {
+              "type": "string",
+              "description": "MCP protocol version"
+            },
+            "build": {
+              "type": "string",
+              "description": "Build identifier"
+            }
+          },
+          "description": "Version information (if include_version=true)"
+        },
+        "stats": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "uptime_seconds": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "requests_served": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "active_sessions": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "memory_usage_bytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "index_size_bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "description": "System statistics (if include_stats=true)"
+        },
+        "health": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "index": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "healthy": { "type": "boolean" },
+                "message": { "type": "string" }
+              },
+              "required": ["healthy"]
+            },
+            "memory": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "healthy": { "type": "boolean" },
+                "message": { "type": "string" }
+              },
+              "required": ["healthy"]
+            }
+          },
+          "description": "Health check results"
+        }
+      },
+      "required": ["ok", "request_id", "pong", "timestamp"]
+    },
+    {
+      "$ref": "common.schema.json#/$defs/ErrorEnvelope"
+    }
+  ]
+}

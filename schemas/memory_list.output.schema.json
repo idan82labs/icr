@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/memory_list.output.schema.json",
+  "title": "memory_list Output",
+  "description": "Output schema for the memory_list MCP tool",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        },
+        "request_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/MemoryEntry"
+          },
+          "description": "List of memory entries"
+        },
+        "total_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total number of entries matching the filter"
+        },
+        "next_cursor": {
+          "type": "string",
+          "description": "Cursor for the next page (if more results exist)"
+        }
+      },
+      "required": ["ok", "request_id", "entries", "total_count"]
+    },
+    {
+      "$ref": "common.schema.json#/$defs/ErrorEnvelope"
+    }
+  ]
+}

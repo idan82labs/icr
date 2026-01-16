@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/env_slice.output.schema.json",
+  "title": "env_slice Output",
+  "description": "Output schema for the env_slice MCP tool",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        },
+        "request_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "slices": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/Evidence"
+          },
+          "description": "The sliced content"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/Evidence"
+          },
+          "description": "Dependencies (if include_dependencies=true)"
+        },
+        "tokens_used": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total tokens in the slice"
+        },
+        "truncated": {
+          "type": "boolean",
+          "description": "Whether the slice was truncated due to max_tokens"
+        }
+      },
+      "required": ["ok", "request_id", "slices", "tokens_used"]
+    },
+    {
+      "$ref": "common.schema.json#/$defs/ErrorEnvelope"
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/memory_pack.output.schema.json",
+  "title": "memory_pack Output",
+  "description": "Output schema for the memory_pack MCP tool",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        },
+        "request_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "mode_used": {
+          "type": "string",
+          "enum": ["pack", "rlm"],
+          "description": "The actual mode used (relevant when mode=auto)"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/Evidence"
+          },
+          "description": "Retrieved evidence items"
+        },
+        "pinned": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/MemoryEntry"
+          },
+          "description": "Relevant pinned memory entries"
+        },
+        "tokens_used": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of tokens in the pack"
+        },
+        "retrieval_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Time taken for retrieval in milliseconds"
+        }
+      },
+      "required": ["ok", "request_id", "mode_used", "evidence", "tokens_used"]
+    },
+    {
+      "$ref": "common.schema.json#/$defs/ErrorEnvelope"
+    }
+  ]
+}

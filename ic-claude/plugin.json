@@ -1,0 +1,48 @@
+{
+  "name": "icr",
+  "version": "1.0.0",
+  "description": "Infinite Context Runtime - RLM-inspired unlimited context for Claude Code",
+  "author": "ICR Team",
+  "license": "MIT",
+  "commands": ["ic"],
+  "hooks": {
+    "UserPromptSubmit": "scripts/hook_userpromptsubmit.py",
+    "Stop": "scripts/hook_stop.py",
+    "PreCompact": "scripts/hook_precompact.py"
+  },
+  "mcp_server": {
+    "command": "icr",
+    "args": ["mcp-serve"]
+  },
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "auto_inject": {
+        "type": "boolean",
+        "default": true,
+        "description": "Automatically inject context pack on each prompt"
+      },
+      "max_context_tokens": {
+        "type": "integer",
+        "default": 4000,
+        "description": "Maximum tokens for injected context"
+      },
+      "ledger_extraction": {
+        "type": "boolean",
+        "default": true,
+        "description": "Extract ledger from responses"
+      },
+      "persist_invariants": {
+        "type": "boolean",
+        "default": true,
+        "description": "Persist invariants across compactions"
+      }
+    }
+  },
+  "requirements": {
+    "python": ">=3.10",
+    "dependencies": [
+      "icr-core>=1.0.0"
+    ]
+  }
+}

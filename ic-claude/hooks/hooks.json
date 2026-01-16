@@ -1,0 +1,62 @@
+{
+  "$schema": "https://claude.ai/schemas/hooks.json",
+  "description": "ICR (Infinite Context Runtime) hook configuration template",
+  "version": "1.0.0",
+
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "type": "command",
+        "command": "python3 -m icr.claude.hooks.userpromptsubmit",
+        "timeout_ms": 5000,
+        "description": "ICR: Inject context pack and RLM header into prompt",
+        "on_error": "warn"
+      }
+    ],
+
+    "Stop": [
+      {
+        "type": "command",
+        "command": "python3 -m icr.claude.hooks.stop",
+        "timeout_ms": 10000,
+        "description": "ICR: Extract ledger, update priors, compute metrics",
+        "on_error": "ignore"
+      }
+    ],
+
+    "PreCompact": [
+      {
+        "type": "command",
+        "command": "python3 -m icr.claude.hooks.precompact",
+        "timeout_ms": 15000,
+        "description": "ICR: Persist invariants and create compact-safe snapshot",
+        "on_error": "warn"
+      }
+    ]
+  },
+
+  "installation_notes": {
+    "user_level": {
+      "path": "~/.claude/settings.json",
+      "priority": "critical",
+      "description": "User-level hooks ensure ICR works across all projects"
+    },
+    "project_level": {
+      "path": ".claude/settings.json",
+      "priority": "fallback",
+      "description": "Project-level hooks for project-specific configuration"
+    },
+    "plugin_level": {
+      "path": "~/.claude/plugins/icr/hooks.json",
+      "priority": "optional",
+      "description": "Plugin-level hooks (requires plugin system support)"
+    }
+  },
+
+  "fallback_commands": {
+    "description": "If hooks fail, these /ic commands provide equivalent functionality",
+    "pack": "/ic pack - Manual context pack generation",
+    "ledger": "/ic ledger - View extracted ledger entries",
+    "status": "/ic status - Check ICR and hook status"
+  }
+}

@@ -1,0 +1,8 @@
+{"timestamp": "2026-01-16T10:00:00Z", "role": "user", "content": "Where is the auth token validated?"}
+{"timestamp": "2026-01-16T10:00:05Z", "role": "assistant", "content": "The auth token is validated in `src/auth/validator.ts` in the `validateToken` function.", "tool_calls": [{"name": "project_symbol_search", "args": {"query": "validateToken"}}]}
+{"timestamp": "2026-01-16T10:01:00Z", "role": "user", "content": "How does the refresh endpoint work?"}
+{"timestamp": "2026-01-16T10:01:10Z", "role": "assistant", "content": "The refresh endpoint is in `src/api/endpoints.ts`. It calls `refreshToken` from the auth handler.", "ledger": {"decisions": ["Use handleAuth before refreshing token"], "invariants": ["Token must not be expired for refresh"]}}
+{"timestamp": "2026-01-16T10:02:00Z", "role": "user", "content": "What types are used across the API?"}
+{"timestamp": "2026-01-16T10:02:15Z", "role": "assistant", "content": "The shared types are defined in `src/types/shared.ts`. Key types include: AuthToken (for authentication tokens), User (for user data), and ApiResponse<T> (generic response wrapper).", "tool_calls": [{"name": "memory_pack", "args": {"prompt": "shared types API"}}]}
+{"timestamp": "2026-01-16T10:03:00Z", "role": "user", "content": "Can you show me the API contract?"}
+{"timestamp": "2026-01-16T10:03:20Z", "role": "assistant", "content": "The API contract is defined in `contracts/api.yaml`. It specifies two main endpoints: POST /api/auth for authentication and POST /api/auth/refresh for token refresh.", "ledger": {"observations": ["API uses OpenAPI 3.0 specification", "Two authentication endpoints defined"]}}

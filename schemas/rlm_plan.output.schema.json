@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/rlm_plan.output.schema.json",
+  "title": "rlm_plan Output",
+  "description": "Output schema for the rlm_plan MCP tool",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        },
+        "request_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "plan_id": {
+          "type": "string",
+          "description": "Unique identifier for the generated plan"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/RlmStep"
+          },
+          "description": "Steps in the plan"
+        },
+        "estimated_cost": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "peek_lines": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "search_queries": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "candidates": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "description": "Estimated resource cost"
+        },
+        "rationale": {
+          "type": "string",
+          "description": "Explanation of the overall plan strategy"
+        }
+      },
+      "required": ["ok", "request_id", "plan_id", "steps"]
+    },
+    {
+      "$ref": "common.schema.json#/$defs/ErrorEnvelope"
+    }
+  ]
+}

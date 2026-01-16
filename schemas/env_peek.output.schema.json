@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/env_peek.output.schema.json",
+  "title": "env_peek Output",
+  "description": "Output schema for the env_peek MCP tool",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        },
+        "request_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "evidence": {
+          "$ref": "common.schema.json#/$defs/Evidence",
+          "description": "The peeked content with metadata"
+        },
+        "symbols": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/Symbol"
+          },
+          "description": "Symbols found in the span (if include_symbols=true)"
+        },
+        "total_lines": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total lines in the file"
+        }
+      },
+      "required": ["ok", "request_id", "evidence"]
+    },
+    {
+      "$ref": "common.schema.json#/$defs/ErrorEnvelope"
+    }
+  ]
+}

@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/memory_stats.output.schema.json",
+  "title": "memory_stats Output",
+  "description": "Output schema for the memory_stats MCP tool",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        },
+        "request_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "total_pins": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total number of pins"
+        },
+        "total_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total size in bytes"
+        },
+        "by_scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "session": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "count": { "type": "integer", "minimum": 0 },
+                "bytes": { "type": "integer", "minimum": 0 }
+              },
+              "required": ["count", "bytes"]
+            },
+            "project": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "count": { "type": "integer", "minimum": 0 },
+                "bytes": { "type": "integer", "minimum": 0 }
+              },
+              "required": ["count", "bytes"]
+            },
+            "global": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "count": { "type": "integer", "minimum": 0 },
+                "bytes": { "type": "integer", "minimum": 0 }
+              },
+              "required": ["count", "bytes"]
+            }
+          },
+          "description": "Breakdown by scope"
+        },
+        "oldest_pin": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of oldest pin"
+        },
+        "newest_pin": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of newest pin"
+        }
+      },
+      "required": ["ok", "request_id", "total_pins", "total_bytes"]
+    },
+    {
+      "$ref": "common.schema.json#/$defs/ErrorEnvelope"
+    }
+  ]
+}

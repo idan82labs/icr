@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/project_impact.output.schema.json",
+  "title": "project_impact Output",
+  "description": "Output schema for the project_impact MCP tool",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        },
+        "request_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "graph": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "nodes": {
+              "type": "array",
+              "items": {
+                "$ref": "common.schema.json#/$defs/ImpactNode"
+              },
+              "description": "Nodes in the impact graph"
+            },
+            "edges": {
+              "type": "array",
+              "items": {
+                "$ref": "common.schema.json#/$defs/ImpactEdge"
+              },
+              "description": "Edges in the impact graph"
+            }
+          },
+          "required": ["nodes", "edges"],
+          "description": "The impact graph"
+        },
+        "impacted_paths": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "impact_score": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["path", "impact_score"]
+          },
+          "description": "Paths impacted by the changes"
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "total_impacted": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "high_impact_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "medium_impact_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "low_impact_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "by_type": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "description": "Impact summary"
+        }
+      },
+      "required": ["ok", "request_id", "graph", "impacted_paths"]
+    },
+    {
+      "$ref": "common.schema.json#/$defs/ErrorEnvelope"
+    }
+  ]
+}

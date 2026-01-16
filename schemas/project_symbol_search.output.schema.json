@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/project_symbol_search.output.schema.json",
+  "title": "project_symbol_search Output",
+  "description": "Output schema for the project_symbol_search MCP tool",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        },
+        "request_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "symbols": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "symbol": {
+                "$ref": "common.schema.json#/$defs/Symbol"
+              },
+              "definition": {
+                "$ref": "common.schema.json#/$defs/Evidence",
+                "description": "Symbol definition (if include_definition=true)"
+              },
+              "references": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "path": { "type": "string" },
+                    "span": { "$ref": "common.schema.json#/$defs/Span" },
+                    "context": { "type": "string" }
+                  },
+                  "required": ["path", "span"]
+                },
+                "description": "References to the symbol (if include_references=true)"
+              },
+              "reference_count": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Total number of references"
+              }
+            },
+            "required": ["symbol"]
+          },
+          "description": "Found symbols"
+        },
+        "total_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total number of matching symbols"
+        }
+      },
+      "required": ["ok", "request_id", "symbols", "total_count"]
+    },
+    {
+      "$ref": "common.schema.json#/$defs/ErrorEnvelope"
+    }
+  ]
+}

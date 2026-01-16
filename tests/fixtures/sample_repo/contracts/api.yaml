@@ -1,0 +1,95 @@
+openapi: 3.0.0
+info:
+  title: Auth API
+  version: 1.0.0
+  description: Authentication API for the application
+
+paths:
+  /api/auth:
+    post:
+      operationId: authenticate
+      summary: Authenticate user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthRequest'
+      responses:
+        '200':
+          description: Successful authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Authentication failed
+
+  /api/auth/refresh:
+    post:
+      operationId: refreshToken
+      summary: Refresh authentication token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+
+components:
+  schemas:
+    AuthRequest:
+      type: object
+      required:
+        - token
+      properties:
+        token:
+          type: string
+          description: Authentication token
+
+    AuthResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/User'
+        error:
+          type: string
+
+    RefreshRequest:
+      type: object
+      required:
+        - token
+      properties:
+        token:
+          type: string
+
+    TokenResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        expiresAt:
+          type: integer
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string

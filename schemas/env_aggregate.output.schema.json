@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/env_aggregate.output.schema.json",
+  "title": "env_aggregate Output",
+  "description": "Output schema for the env_aggregate MCP tool",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        },
+        "request_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "key": {
+                "type": "string",
+                "description": "Group key value"
+              },
+              "value": {
+                "type": "number",
+                "description": "Aggregated value"
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Number of items in the group"
+              }
+            },
+            "required": ["key", "value"]
+          },
+          "description": "Aggregation results by group"
+        },
+        "total": {
+          "type": "number",
+          "description": "Total aggregated value across all groups"
+        },
+        "total_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total number of items aggregated"
+        }
+      },
+      "required": ["ok", "request_id", "groups", "total", "total_count"]
+    },
+    {
+      "$ref": "common.schema.json#/$defs/ErrorEnvelope"
+    }
+  ]
+}

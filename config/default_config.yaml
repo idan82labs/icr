@@ -1,0 +1,334 @@
+# ICR (Infinite Context Runtime) Default Configuration
+#
+# This is the default configuration file. To customize, copy to ~/.icr/config.yaml
+# and modify as needed.
+#
+# Documentation: See docs/CONFIGURATION.md for detailed explanations.
+
+icr:
+  # =============================================================================
+  # Storage Settings
+  # =============================================================================
+  storage:
+    # Root directory for all ICR data
+    # Default: ~/.icr
+    root: ~/.icr
+
+    # Maximum number of vectors per repository
+    # Higher values require more memory but support larger codebases
+    # Tier 1 (guaranteed): 100,000
+    # Tier 2 (stretch): 250,000
+    max_vectors_per_repo: 250000
+
+    # Vector storage data type
+    # float16: 2x smaller, negligible quality loss (recommended)
+    # float32: full precision, 2x larger
+    # Note: Distance computation always uses float32 regardless of storage type
+    vector_dtype: float16
+
+    # Chunk deduplication
+    # When enabled, identical content chunks are stored once
+    deduplicate_chunks: true
+
+  # =============================================================================
+  # Embedding Settings
+  # =============================================================================
+  embedding:
+    # Embedding backend selection
+    # Options:
+    #   - local-onnx: ONNX Runtime with optimized inference (default, recommended)
+    #   - local-transformers: HuggingFace Transformers (fallback)
+    #   - remote-openai: OpenAI API (requires explicit opt-in)
+    #   - remote-cohere: Cohere API (requires explicit opt-in)
+    backend: local-onnx
+
+    # Model for local backends
+    # Recommended: all-MiniLM-L6-v2 (fast, good quality, 384 dimensions)
+    # Alternative: all-mpnet-base-v2 (better quality, 768 dimensions, slower)
+    model: all-MiniLM-L6-v2
+
+    # Embedding dimensions (auto-detected from model, but can override)
+    # dimensions: 384
+
+    # Batch size for embedding generation
+    batch_size: 32
+
+    # Cache embeddings in memory for hot vectors
+    cache_hot_vectors: true
+    cache_size_mb: 100
+
+    # Remote backend settings (only used if backend is remote-*)
+    # SECURITY: API keys should use environment variable references
+    # remote_api_key: ${ICR_EMBEDDING_API_KEY}
+    # remote_endpoint: https://api.openai.com/v1/embeddings
+
+  # =============================================================================
+  # Indexing Settings
+  # =============================================================================
+  indexing:
+    # File watcher debounce interval (milliseconds)
+    # Lower = more responsive, higher = less CPU usage
+    watcher_debounce_ms: 500
+
+    # Maximum file size to index (KB)
+    # Files larger than this are skipped
+    max_file_size_kb: 1024
+
+    # Chunking settings
+    chunking:
+      # Target chunk size in tokens
+      target_min_tokens: 200
+      target_max_tokens: 800
+
+      # Hard maximum chunk size (will split if exceeded)
+      hard_max_tokens: 1200
+
+      # Chunking strategy
+      # symbol: Chunk by functions/classes/methods (recommended)
+      # semantic: Chunk by semantic boundaries
+      # fixed: Fixed-size chunks (not recommended)
+      strategy: symbol
+
+      # Include docstrings/comments with their associated symbols
+      include_docs: true
+
+    # Languages to index (empty = all detected)
+    # languages:
+    #   - python
+    #   - typescript
+    #   - javascript
+    #   - rust
+    #   - go
+
+  # =============================================================================
+  # Security Settings
+  # =============================================================================
+  security:
+    # Patterns to ignore (never index these files)
+    # Uses glob patterns
+    ignore_patterns:
+      # Secrets and credentials
+      - ".env"
+      - ".env.*"
+      - "*.pem"
+      - "*.key"
+      - "*.p12"
+      - "*.pfx"
+      - "id_rsa"
+      - "id_dsa"
+      - "id_ecdsa"
+      - "id_ed25519"
+      - "credentials.json"
+      - "service-account*.json"
+      - "**/secrets/**"
+      - "**/credentials/**"
+
+      # SSH and cloud configs
+      - ".aws/**"
+      - ".ssh/**"
+      - ".netrc"
+      - ".npmrc"
+      - ".pypirc"
+      - "*.keystore"
+
+      # Git internals
+      - ".git/**"
+
+      # Large/binary files
+      - "*.zip"
+      - "*.tar*"
+      - "*.jar"
+      - "*.war"
+      - "*.exe"
+      - "*.dll"
+      - "*.so"
+      - "*.dylib"
+
+      # Dependencies (large, reconstructable)
+      - "node_modules/**"
+      - "vendor/**"
+      - ".venv/**"
+      - "venv/**"
+
+      # Build outputs
+      - "dist/**"
+      - "build/**"
+      - "target/**"
+      - "__pycache__/**"
+      - "*.pyc"
+
+    # Network access policy
+    # CRITICAL: When false, ICR will NEVER make network requests
+    # This is the default for privacy/security
+    network_enabled: false
+
+    # Prompt injection containment
+    # When true, all retrieved content is treated as quoted data
+    # and never executed or interpreted as instructions
+    quote_all_evidence: true
+
+  # =============================================================================
+  # Retrieval Settings
+  # =============================================================================
+  retrieval:
+    # Hybrid scoring weights
+    # These control the balance between different scoring signals
+    weights:
+      # Semantic similarity (embedding cosine)
+      semantic: 0.5
+
+      # Lexical similarity (BM25)
+      lexical: 0.3
+
+      # Recency boost
+      recency: 0.1
+
+      # Contract file boost
+      contract: 0.05
+
+      # Focus path boost
+      focus: 0.03
+
+      # Pinned content boost
+      pinned: 0.02
+
+    # Recency decay
+    # τ in exp(-Δt/τ) where Δt is age in seconds
+    recency_tau_seconds: 86400  # 1 day
+
+    # MMR diversity
+    # λ controls relevance vs diversity tradeoff
+    # Higher = more relevance, lower = more diversity
+    mmr_lambda: 0.7
+
+    # Default number of results
+    default_k: 20
+
+    # Maximum results per query
+    max_k: 50
+
+    # Retrieval entropy temperature
+    # Used for confidence estimation
+    entropy_temperature: 1.0
+
+  # =============================================================================
+  # Pack Compiler Settings
+  # =============================================================================
+  pack:
+    # Default token budget for pack generation
+    default_budget_tokens: 4000
+
+    # Maximum token budget (soft limit)
+    max_budget_tokens: 8000
+
+    # Hard maximum (will truncate if exceeded)
+    hard_max_tokens: 25000
+
+    # Reserved space for mandatory items (invariants, repo map header)
+    mandatory_reserve_tokens: 500
+
+    # Include repo map header in pack
+    include_repo_map: true
+
+    # Maximum files in repo map
+    repo_map_max_files: 50
+
+  # =============================================================================
+  # RLM-Lite Settings
+  # =============================================================================
+  rlm:
+    # Maximum plan steps
+    max_steps: 12
+
+    # Maximum lines for env_peek operations
+    max_peek_lines: 1200
+
+    # Maximum candidates for aggregation
+    max_candidates: 50
+
+    # Timeouts (milliseconds)
+    pack_plan_timeout_ms: 8000
+    map_reduce_timeout_ms: 20000
+
+    # Entropy threshold for RLM mode activation
+    # Higher entropy = more distributed retrieval results = prefer RLM
+    entropy_threshold: 2.5
+
+  # =============================================================================
+  # Mode Gating Settings
+  # =============================================================================
+  gating:
+    # Initial Beta prior parameters for task-class success tracking
+    # Beta(α, β) where higher α = more prior successes
+    initial_alpha: 2.0
+    initial_beta: 2.0
+
+    # Task classes that always trigger RLM mode
+    rlm_trigger_classes:
+      - "repo-wide audit"
+      - "consistency check"
+      - "cross-surface refactor"
+
+    # Variance-aware throttling
+    # If latency > mean + throttle_sigma * std, reduce limits
+    throttle_sigma: 3.0
+
+  # =============================================================================
+  # Memory Settings
+  # =============================================================================
+  memory:
+    # Maximum pinned invariants per repository
+    max_pins_per_repo: 100
+
+    # Maximum decisions to retain
+    max_decisions: 1000
+
+    # Maximum todos to retain
+    max_todos: 500
+
+    # Work unit detection
+    # Gap in seconds to consider a new work unit
+    work_unit_gap_seconds: 1800  # 30 minutes
+
+  # =============================================================================
+  # Telemetry Settings (Local Only)
+  # =============================================================================
+  telemetry:
+    # Enable local telemetry collection
+    # Note: This is LOCAL ONLY - no data is ever sent externally
+    enabled: true
+
+    # Retention period for telemetry data
+    retention_days: 30
+
+    # Metrics to collect
+    metrics:
+      - tool_latency
+      - ewr_proxy
+      - imr_proxy
+      - gating_decisions
+      - entropy_values
+      - budget_usage
+      - cache_hits
+
+  # =============================================================================
+  # Performance Tuning
+  # =============================================================================
+  performance:
+    # Number of worker threads for indexing
+    indexing_workers: 4
+
+    # SQLite connection pool size
+    sqlite_pool_size: 5
+
+    # HNSW index parameters
+    hnsw:
+      # ef_construction: Higher = better recall, slower indexing
+      ef_construction: 200
+
+      # M: Number of connections per layer
+      # Higher = better recall, more memory
+      M: 16
+
+      # ef_search: Higher = better recall, slower search
+      ef_search: 50

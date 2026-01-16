@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/memory_stats.input.schema.json",
+  "title": "memory_stats Input",
+  "description": "Input schema for the memory_stats MCP tool",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "scope": {
+      "$ref": "common.schema.json#/$defs/MemoryScope",
+      "description": "Filter stats by scope"
+    },
+    "include_breakdown": {
+      "type": "boolean",
+      "description": "Include detailed breakdown by type"
+    }
+  }
+}

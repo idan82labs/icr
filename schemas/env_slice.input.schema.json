@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icr.dev/schemas/env_slice.input.schema.json",
+  "title": "env_slice Input",
+  "description": "Input schema for the env_slice MCP tool",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "paths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "maxItems": 100,
+      "description": "File paths to slice"
+    },
+    "spans": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "span": {
+            "$ref": "common.schema.json#/$defs/Span"
+          }
+        },
+        "required": ["path", "span"]
+      },
+      "maxItems": 100,
+      "description": "Specific spans to slice"
+    },
+    "symbol_names": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "maxItems": 50,
+      "description": "Symbol names to extract"
+    },
+    "include_dependencies": {
+      "type": "boolean",
+      "description": "Include direct dependencies of sliced symbols"
+    },
+    "max_tokens": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 10000,
+      "description": "Maximum tokens in the slice"
+    },
+    "repo_root": {
+      "type": "string",
+      "description": "Repository root for relative paths"
+    }
+  }
+}
