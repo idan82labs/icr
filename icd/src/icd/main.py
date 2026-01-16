@@ -224,6 +224,24 @@ class ICDService:
 
         return {"files": 0, "chunks": 0, "errors": 0}
 
+    async def reindex_file(self, path: Path) -> dict[str, int]:
+        """
+        Re-index a specific file.
+
+        Args:
+            path: Path to the file to re-index.
+
+        Returns:
+            Statistics about the re-indexed file.
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        if self._watcher:
+            return await self._watcher.reindex_file(path)
+
+        return {"chunks": 0, "errors": 1}
+
     async def retrieve(
         self,
         query: str,

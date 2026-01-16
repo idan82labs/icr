@@ -37,6 +37,8 @@ class RLMMetrics:
     sub_queries_executed: int = 0
     total_chunks_retrieved: int = 0
     aggregation_dedup_ratio: float = 0.0
+    used_llm_decomposition: bool = False
+    llm_reasoning: str = ""
 
 
 @dataclass
@@ -55,25 +57,38 @@ class ICDBridge:
 
     Handles:
     - Loading existing ICD index
+    - Auto-indexing when index doesn't exist
     - Hybrid retrieval (semantic + BM25)
     - RLM auto-gating and iteration
     - Result aggregation
+    - File watching for incremental updates
     """
 
-    def __init__(self, project_root: Path | None = None):
+    def __init__(
+        self,
+        project_root: Path | None = None,
+        auto_index: bool = True,
+        watch_files: bool = False,
+    ):
         """
         Initialize the ICD bridge.
 
         Args:
             project_root: Root directory of the project (defaults to cwd)
+            auto_index: If True, automatically index if no index exists
+            watch_files: If True, start file watching after indexing
         """
         self.project_root = project_root or Path.cwd()
         self.config = RetrievalConfig()
+        self.auto_index = auto_index
+        self.watch_files = watch_files
         self._initialized = False
         self._retriever = None
         self._planner = None
         self._aggregator = None
         self._icd_config = None
+        self._icd_service = None
+        self._indexing_in_progress = False
 
     async def initialize(self) -> bool:
         """
@@ -110,24 +125,28 @@ class ICDBridge:
             # Check if index exists
             db_path = self._icd_config.db_path
             if not db_path.exists():
-                logger.warning(f"ICD index not found at {db_path}")
-                return False
+                if self.auto_index:
+                    logger.info(f"ICD index not found at {db_path}, auto-indexing...")
+                    success = await self._auto_index()
+                    if not success:
+                        logger.warning("Auto-indexing failed")
+                        return False
+                else:
+                    logger.warning(f"ICD index not found at {db_path}")
+                    return False
 
             # Initialize stores
-            sqlite_store = SQLiteStore(db_path)
+            sqlite_store = SQLiteStore(self._icd_config)
             await sqlite_store.initialize()
 
-            vector_store = VectorStore(
-                index_path=self._icd_config.vector_index_path,
-                dimension=self._icd_config.embedding.dimension,
-            )
-            await vector_store.load()
+            vector_store = VectorStore(self._icd_config)
+            await vector_store.initialize()
 
-            contract_store = ContractStore(sqlite_store)
-            memory_store = MemoryStore(sqlite_store)
+            contract_store = ContractStore(self._icd_config, sqlite_store)
+            memory_store = MemoryStore(self._icd_config, sqlite_store)
 
             # Initialize embedder
-            embedder = await create_embedder(self._icd_config)
+            embedder = create_embedder(self._icd_config)
 
             # Create retriever
             self._retriever = HybridRetriever(
@@ -158,6 +177,99 @@ class ICDBridge:
         except Exception as e:
             logger.warning(f"Failed to initialize ICD bridge: {e}")
             return False
+
+    async def _auto_index(self) -> bool:
+        """
+        Automatically index the project.
+
+        Returns:
+            True if indexing succeeded
+        """
+        if self._indexing_in_progress:
+            logger.warning("Indexing already in progress")
+            return False
+
+        self._indexing_in_progress = True
+        try:
+            from icd.config import load_config
+            from icd.main import ICDService
+
+            # Load config for this project
+            config_path = self.project_root / ".icr" / "config.yaml"
+            if not config_path.exists():
+                config_path = self.project_root / ".icd" / "config.yaml"
+
+            config = load_config(
+                config_path=config_path if config_path.exists() else None,
+                project_root=self.project_root,
+            )
+
+            # Create service instance with config
+            self._icd_service = ICDService(config=config)
+            await self._icd_service.initialize()
+
+            # Index the directory
+            logger.info(f"Auto-indexing project: {self.project_root}")
+            stats = await self._icd_service.index_directory()
+            logger.info(
+                f"Auto-indexing complete",
+                files=stats.get("files", 0),
+                chunks=stats.get("chunks", 0),
+                errors=stats.get("errors", 0),
+            )
+
+            # Start file watching if requested
+            if self.watch_files:
+                await self._icd_service.start_watching()
+                logger.info("File watching started")
+
+            return stats.get("errors", 0) == 0 or stats.get("chunks", 0) > 0
+
+        except Exception as e:
+            logger.error(f"Auto-indexing failed: {e}")
+            return False
+        finally:
+            self._indexing_in_progress = False
+
+    async def reindex_file(self, file_path: str | Path) -> dict[str, int]:
+        """
+        Re-index a specific file.
+
+        Args:
+            file_path: Path to the file to re-index
+
+        Returns:
+            Statistics about the re-indexed file
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        try:
+            from icd.config import load_config
+            from icd.main import ICDService
+
+            if not self._icd_service:
+                # Load config for this project
+                config_path = self.project_root / ".icr" / "config.yaml"
+                if not config_path.exists():
+                    config_path = self.project_root / ".icd" / "config.yaml"
+
+                config = load_config(
+                    config_path=config_path if config_path.exists() else None,
+                    project_root=self.project_root,
+                )
+                self._icd_service = ICDService(config=config)
+                await self._icd_service.initialize()
+
+            return await self._icd_service.reindex_file(Path(file_path))
+
+        except Exception as e:
+            logger.error(f"Failed to reindex file {file_path}: {e}")
+            return {"errors": 1}
+
+    def is_indexing(self) -> bool:
+        """Check if indexing is currently in progress."""
+        return self._indexing_in_progress
 
     async def retrieve(
         self,
@@ -252,6 +364,9 @@ class ICDBridge:
         """
         Execute RLM iterative retrieval.
 
+        Uses LLM-based query decomposition if ANTHROPIC_API_KEY is set,
+        otherwise falls back to heuristic decomposition.
+
         Args:
             query: Original query
             initial_result: Results from initial retrieval
@@ -260,8 +375,8 @@ class ICDBridge:
         Returns:
             RetrievalResult with aggregated chunks
         """
-        # Create plan
-        plan = self._planner.create_plan(query, initial_result)
+        # Create plan (with LLM if available)
+        plan = await self._planner.create_plan_with_llm(query, initial_result)
 
         # Track results for aggregation
         iteration_results = []
@@ -326,6 +441,10 @@ class ICDBridge:
             for c in aggregated.chunks[:k]
         ]
 
+        # Extract LLM metadata from plan
+        used_llm = plan.metadata.get("used_llm", False)
+        llm_reasoning = plan.metadata.get("llm_reasoning", "")
+
         return RetrievalResult(
             chunks=chunks,
             scores=aggregated.scores[:k],
@@ -337,6 +456,8 @@ class ICDBridge:
                 sub_queries_executed=len(sub_query_info),
                 total_chunks_retrieved=sum(len(ir[1]) for ir in iteration_results),
                 aggregation_dedup_ratio=aggregated.metadata.get("duplicate_ratio", 0),
+                used_llm_decomposition=used_llm,
+                llm_reasoning=llm_reasoning,
             ),
             sub_query_results=sub_query_info,
         )

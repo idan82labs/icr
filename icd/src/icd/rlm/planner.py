@@ -3,10 +3,15 @@ RLM plan generation for iterative retrieval.
 
 Generates retrieval plans when initial results have high entropy,
 decomposing complex queries into focused sub-queries.
+
+Supports two decomposition modes:
+1. LLM-based (uses Claude to intelligently decompose queries)
+2. Heuristic-based (rule-based decomposition, no API calls)
 """
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 from enum import Enum
@@ -19,6 +24,9 @@ if TYPE_CHECKING:
     from icd.retrieval.hybrid import Chunk, RetrievalResult
 
 logger = structlog.get_logger(__name__)
+
+# Check if LLM decomposition is available
+LLM_DECOMPOSITION_AVAILABLE = bool(os.environ.get("ANTHROPIC_API_KEY"))
 
 
 class QueryType(str, Enum):
@@ -126,6 +134,73 @@ class RLMPlanner:
         )
 
         return plan
+
+    async def create_plan_with_llm(
+        self,
+        query: str,
+        initial_result: "RetrievalResult",
+        use_llm: bool = True,
+    ) -> RetrievalPlan:
+        """
+        Create a retrieval plan using LLM-based decomposition.
+
+        This is the preferred method when an Anthropic API key is available.
+        Falls back to heuristic decomposition if LLM is not available.
+
+        Args:
+            query: Original user query.
+            initial_result: Initial retrieval results.
+            use_llm: Whether to use LLM (if available).
+
+        Returns:
+            RetrievalPlan with decomposed sub-queries.
+        """
+        if use_llm and LLM_DECOMPOSITION_AVAILABLE:
+            try:
+                from icd.rlm.llm_decomposer import LLMDecomposer
+
+                decomposer = LLMDecomposer()
+                decomposition = await decomposer.decompose(query)
+
+                # Convert LLM decomposition to sub-queries
+                sub_queries = []
+                focus_paths = self._extract_focus_paths(initial_result)
+
+                for sq in decomposition.sub_queries:
+                    sub_queries.append(SubQuery(
+                        query=sq.query,
+                        query_type=QueryType(sq.query_type.value),
+                        priority=sq.priority,
+                        focus_paths=focus_paths,
+                    ))
+
+                plan = RetrievalPlan(
+                    original_query=query,
+                    sub_queries=sub_queries,
+                    max_iterations=self.max_iterations,
+                    metadata={
+                        "decomposition_method": "llm",
+                        "llm_reasoning": decomposition.reasoning,
+                        "used_llm": decomposition.used_llm,
+                        "initial_entropy": initial_result.entropy,
+                        "initial_results": len(initial_result.chunks),
+                    },
+                )
+
+                logger.info(
+                    "Created RLM plan with LLM",
+                    num_sub_queries=len(sub_queries),
+                    used_llm=decomposition.used_llm,
+                    reasoning=decomposition.reasoning[:100],
+                )
+
+                return plan
+
+            except Exception as e:
+                logger.warning(f"LLM decomposition failed, using heuristics: {e}")
+
+        # Fall back to heuristic-based plan
+        return self.create_plan(query, initial_result)
 
     def _analyze_query(self, query: str) -> dict[str, Any]:
         """Analyze query to determine its characteristics."""

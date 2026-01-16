@@ -83,6 +83,9 @@ class Aggregator:
         chunk_data: dict[str, dict[str, Any]] = {}
 
         for sub_query, chunks, scores in iteration_results:
+            # Determine source type (initial results have None sub_query)
+            source_type = sub_query.query_type.value if sub_query else "initial"
+
             for chunk, score in zip(chunks, scores):
                 chunk_id = chunk.chunk_id
 
@@ -95,7 +98,7 @@ class Aggregator:
                     }
 
                 chunk_data[chunk_id]["scores"].append(score)
-                chunk_data[chunk_id]["sources"].append(sub_query.query_type.value)
+                chunk_data[chunk_id]["sources"].append(source_type)
                 chunk_data[chunk_id]["max_score"] = max(
                     chunk_data[chunk_id]["max_score"], score
                 )
@@ -201,6 +204,9 @@ class Aggregator:
             type_counts[qt] = type_counts.get(qt, 0) + 1
 
         for sub_query, chunks, _ in iteration_results:
+            # Skip initial results which have None sub_query
+            if sub_query is None:
+                continue
             qt = sub_query.query_type.value
             if chunks:
                 type_results[qt] = type_results.get(qt, 0) + 1

@@ -393,6 +393,8 @@ class MemoryTools:
             input_data.prompt,
             mode_resolved,
             sub_query_info,
+            used_llm=icd_result.get("used_llm", False) if icd_result else False,
+            llm_reasoning=icd_result.get("llm_reasoning", "") if icd_result else "",
         )
 
         # Calculate confidence based on coverage and relevance
@@ -494,6 +496,8 @@ class MemoryTools:
             if result.metrics.mode == "rlm":
                 gating_reasons.append("HIGH_ENTROPY")
                 gating_reasons.append(f"RLM_{result.metrics.iterations}_ITERATIONS")
+                if result.metrics.used_llm_decomposition:
+                    gating_reasons.append("LLM_DECOMPOSITION")
             else:
                 gating_reasons.append("LOW_ENTROPY")
 
@@ -503,6 +507,8 @@ class MemoryTools:
                 "mode": result.metrics.mode,
                 "gating_reasons": gating_reasons,
                 "sub_query_info": result.sub_query_results,
+                "used_llm": result.metrics.used_llm_decomposition,
+                "llm_reasoning": result.metrics.llm_reasoning,
             }
 
         except ImportError:
@@ -520,6 +526,8 @@ class MemoryTools:
         prompt: str,
         mode: str,
         sub_query_info: list[dict[str, Any]],
+        used_llm: bool = False,
+        llm_reasoning: str = "",
     ) -> tuple[str, int, list[Evidence]]:
         """Build the context pack with RLM information in header."""
         pack_parts: list[str] = []
@@ -539,8 +547,11 @@ class MemoryTools:
                 f"  {i+1}. \"{sq['query']}\" ({sq['type']}) → {sq['results']} results"
                 for i, sq in enumerate(sub_query_info)
             )
+            decomposition_method = "LLM (Claude)" if used_llm else "Heuristic"
+            reasoning_line = f"\n**Reasoning:** {llm_reasoning}" if llm_reasoning else ""
             rlm_section = f"""
 **Mode:** RLM (high entropy detected - iterative retrieval)
+**Decomposition:** {decomposition_method}{reasoning_line}
 **Sub-queries executed:**
 {sub_query_lines}
 """
