@@ -94,8 +94,8 @@ class StdioTransport:
                     if message is None:
                         break
 
-                    # Process message asynchronously
-                    asyncio.create_task(self._handle_message(message))
+                    # Process message and wait for response before continuing
+                    await self._handle_message(message)
 
             except asyncio.CancelledError:
                 logger.info("Transport cancelled")
