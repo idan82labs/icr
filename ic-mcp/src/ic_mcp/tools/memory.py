@@ -528,8 +528,23 @@ class MemoryTools:
         evidence: list[Evidence] = []
         used_tokens = 0
 
-        # Add header
-        header = f"# Context Pack\n\nQuery: {prompt}\n\n---\n\n"
+        # Build sources summary for visibility
+        sources_summary = "\n".join(
+            f"  - {s['path']} (score: {s.get('score', 0):.2f})"
+            for s in sources[:10]
+        )
+
+        # Add header with sources visibility
+        header = f"""# ICR Context Pack
+
+**Query:** {prompt}
+
+**Sources Retrieved ({len(sources)} files):**
+{sources_summary}
+
+---
+
+"""
         header_tokens = count_tokens(header)
         used_tokens += header_tokens
         pack_parts.append(header)

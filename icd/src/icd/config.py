@@ -282,11 +282,23 @@ class PackConfig(BaseModel):
 class WatcherConfig(BaseModel):
     """File system watcher configuration."""
 
+    enabled: bool = Field(
+        default=True,
+        description="Enable file watcher for auto-reindexing",
+    )
     debounce_ms: int = Field(
         default=500,
         ge=100,
         le=5000,
         description="Debounce delay in milliseconds",
+    )
+    respect_gitignore: bool = Field(
+        default=True,
+        description="Respect .gitignore patterns",
+    )
+    respect_icrignore: bool = Field(
+        default=True,
+        description="Respect .icrignore patterns",
     )
     ignore_patterns: list[str] = Field(
         default_factory=lambda: [
@@ -306,8 +318,9 @@ class WatcherConfig(BaseModel):
             "**/*.egg-info/**",
             "**/target/**",  # Rust
             "**/vendor/**",  # Go
+            "**/.icr/**",  # ICR's own data
         ],
-        description="Glob patterns to ignore",
+        description="Glob patterns to ignore (in addition to .gitignore/.icrignore)",
     )
     watch_extensions: list[str] = Field(
         default_factory=lambda: [

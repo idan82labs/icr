@@ -38,6 +38,33 @@ No special commands. No syntax to learn. Just ask.
 
 ---
 
+## Why ICR vs Native Claude Code Tools?
+
+Claude Code already has Glob, Grep, Read, and an Explore agent. So why use ICR?
+
+| Feature | Native Claude Code | With ICR |
+|---------|-------------------|----------|
+| **Search type** | Keyword/regex only | Semantic + keyword hybrid |
+| **"Find auth code"** | Must guess filenames | Finds by *meaning* |
+| **Caching** | Re-scans every query | Pre-indexed, instant |
+| **Context packing** | Manual file selection | Auto-optimized for token budget |
+| **Interface priority** | Treats all code equally | Prioritizes types/interfaces |
+| **Large codebases** | Slower on 10k+ files | Handles 100k+ files |
+
+**The key difference:** Native tools search for *words*. ICR searches for *meaning*.
+
+Example: "How does authentication work?"
+- **Native:** Greps for "auth", "login", "password" → misses OAuth handler named `verifyIdentity()`
+- **ICR:** Finds semantically related code → includes `verifyIdentity()`, `TokenValidator`, `SessionManager`
+
+ICR is most valuable for:
+- Large codebases (1000+ files)
+- Unfamiliar projects (onboarding)
+- Complex questions ("how does X flow through the system?")
+- When you don't know the right keywords
+
+---
+
 ## The Technical Details
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/downloads/)

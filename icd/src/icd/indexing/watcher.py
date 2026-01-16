@@ -31,6 +31,8 @@ from watchdog.events import (
 )
 from watchdog.observers import Observer
 
+from icd.indexing.ignore_parser import load_ignore_patterns
+
 if TYPE_CHECKING:
     from icd.config import Config
     from icd.indexing.embedder import EmbeddingBackend
@@ -246,9 +248,34 @@ class FileWatcher:
             self._contract_detector = ContractDetector(self.config)
         return self._contract_detector
 
+    def _get_all_ignore_patterns(self) -> list[str]:
+        """Get combined ignore patterns from config, .gitignore, and .icrignore."""
+        patterns = list(self.config.watcher.ignore_patterns)
+
+        # Load patterns from .gitignore and .icrignore
+        extra_patterns = load_ignore_patterns(
+            self.config.project_root,
+            include_gitignore=self.config.watcher.respect_gitignore,
+            include_icrignore=self.config.watcher.respect_icrignore,
+        )
+        patterns.extend(extra_patterns)
+
+        logger.info(
+            "Loaded ignore patterns",
+            builtin=len(self.config.watcher.ignore_patterns),
+            from_files=len(extra_patterns),
+            total=len(patterns),
+        )
+
+        return patterns
+
     async def start(self) -> None:
         """Start watching for file changes."""
         if self._running:
+            return
+
+        if not self.config.watcher.enabled:
+            logger.info("File watcher disabled in config")
             return
 
         logger.info(
@@ -256,10 +283,13 @@ class FileWatcher:
             path=str(self.config.project_root),
         )
 
+        # Get combined ignore patterns
+        ignore_patterns = self._get_all_ignore_patterns()
+
         self._handler = DebouncedHandler(
             callback=self._handle_changes,
             debounce_ms=self.config.watcher.debounce_ms,
-            ignore_patterns=self.config.watcher.ignore_patterns,
+            ignore_patterns=ignore_patterns,
             watch_extensions=self.config.watcher.watch_extensions,
         )
         self._handler.set_loop(asyncio.get_event_loop())
@@ -484,6 +514,9 @@ class FileWatcher:
 
         stats = {"files": 0, "chunks": 0, "contracts": 0, "errors": 0}
 
+        # Get combined ignore patterns (including .gitignore and .icrignore)
+        ignore_patterns = self._get_all_ignore_patterns()
+
         # Collect all files to index
         files_to_index: list[Path] = []
 
@@ -496,7 +529,7 @@ class FileWatcher:
                 for d in dirs
                 if not any(
                     fnmatch.fnmatch(str(root_path / d), pattern)
-                    for pattern in self.config.watcher.ignore_patterns
+                    for pattern in ignore_patterns
                 )
             ]
 
@@ -507,7 +540,7 @@ class FileWatcher:
                 str_path = str(file_path)
                 if any(
                     fnmatch.fnmatch(str_path, pattern)
-                    for pattern in self.config.watcher.ignore_patterns
+                    for pattern in ignore_patterns
                 ):
                     continue
 

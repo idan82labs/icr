@@ -14,6 +14,17 @@ Then restart Claude Code.
 
 **That's it.** Just ask questions normally.
 
+## Why ICR?
+
+Claude Code has Glob, Grep, and Read tools. ICR adds **semantic search** - finding code by *meaning*, not just keywords.
+
+| You ask | Native tools | ICR |
+|---------|-------------|-----|
+| "auth code" | Searches for "auth" | Finds `verifyIdentity()`, `TokenValidator` |
+| "database setup" | Searches for "database" | Finds `ConnectionPool`, ORM configs |
+
+Best for: large codebases, unfamiliar projects, "how does X work?" questions.
+
 ## How It Works
 
 After installation, Claude automatically uses ICR when you ask about code:

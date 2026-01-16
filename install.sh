@@ -69,7 +69,44 @@ retrieval:
 
 pack:
   default_budget_tokens: 8000
+
+watcher:
+  enabled: true
+  respect_gitignore: true
+  respect_icrignore: true
 CFGEOF
+
+# Create default .icrignore if it doesn't exist
+if [ ! -f .icrignore ]; then
+cat > .icrignore << 'IGNEOF'
+# ICR Ignore File - patterns here are excluded from indexing
+# Uses gitignore syntax
+
+# Secrets and credentials
+.env
+.env.*
+*.pem
+*.key
+credentials.json
+secrets.yaml
+
+# Large generated files
+*.min.js
+*.min.css
+*.bundle.js
+
+# Lock files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+poetry.lock
+
+# Test snapshots
+__snapshots__/
+*.snap
+IGNEOF
+echo "Created .icrignore"
+fi
 
 # Index the codebase
 echo "Indexing your codebase..."
