@@ -408,11 +408,10 @@ def cli(ctx: click.Context, config: Path | None, project: Path, verbose: bool) -
     ctx.ensure_object(dict)
 
     # Configure logging
-    log_level = "DEBUG" if verbose else "INFO"
+    import logging
+    log_level = logging.DEBUG if verbose else logging.INFO
     structlog.configure(
-        wrapper_class=structlog.make_filtering_bound_logger(
-            getattr(structlog, log_level)
-        ),
+        wrapper_class=structlog.make_filtering_bound_logger(log_level),
     )
 
     # Load configuration
