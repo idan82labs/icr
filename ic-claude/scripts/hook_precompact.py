@@ -653,6 +653,62 @@ class ICRClient:
         return count
 
 
+def save_pins(project_root: Path, snapshot: CompactSnapshot) -> None:
+    """
+    Save key items as pins for later retrieval.
+
+    Pins are stored in .icr/pins.json and can be retrieved by
+    hook_userpromptsubmit.py when a continuation query is detected.
+    """
+    pins_file = project_root / ".icr" / "pins.json"
+    pins_file.parent.mkdir(parents=True, exist_ok=True)
+
+    pins = []
+
+    # Pin key files (with importance scores based on edit weight)
+    for i, file_path in enumerate(snapshot.key_files[:5]):
+        # Approximate score based on position (higher position = higher score)
+        score = 1.0 - (i * 0.15)
+        pins.append({
+            "type": "file",
+            "label": file_path,
+            "content": file_path,
+            "score": score,
+        })
+
+    # Pin critical decisions
+    for decision in snapshot.critical_decisions[:3]:
+        content = decision.get("content", "") if isinstance(decision, dict) else str(decision)
+        pins.append({
+            "type": "decision",
+            "label": "Decision",
+            "content": content,
+        })
+
+    # Pin active todos
+    for todo in snapshot.active_todos[:5]:
+        content = todo.get("content", "") if isinstance(todo, dict) else str(todo)
+        pins.append({
+            "type": "todo",
+            "label": "TODO",
+            "content": content,
+        })
+
+    # Pin key symbols (if any)
+    if snapshot.key_symbols:
+        pins.append({
+            "type": "symbols",
+            "label": "Key Symbols",
+            "content": ", ".join(snapshot.key_symbols[:10]),
+        })
+
+    try:
+        pins_file.write_text(json.dumps(pins, indent=2))
+        logger.info(f"Saved {len(pins)} pins to {pins_file}")
+    except Exception as e:
+        logger.warning(f"Failed to save pins: {e}")
+
+
 def build_compact_snapshot(
     client: ICRClient,
     hook_input: HookInput,
@@ -795,6 +851,14 @@ def handle_hook(input_data: dict[str, Any]) -> dict[str, Any]:
         client.increment_compaction_count(hook_input.session_id)
     except Exception as e:
         logger.warning(f"Failed to record compaction: {e}")
+        # Non-fatal, continue
+
+    # Save pins for later retrieval by continuation queries
+    try:
+        project_root = Path.cwd()
+        save_pins(project_root, snapshot)
+    except Exception as e:
+        logger.warning(f"Failed to save pins: {e}")
         # Non-fatal, continue
 
     # Generate output

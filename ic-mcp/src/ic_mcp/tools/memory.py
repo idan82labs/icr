@@ -386,6 +386,22 @@ class MemoryTools:
         # Take top k sources
         top_sources = scored_sources[: input_data.k]
 
+        # Pre-calculate confidence to include in pack header
+        # We need a rough estimate of budget_used first
+        estimated_budget = min(
+            sum(len(s.get("content", "")) // 4 for s in top_sources),
+            input_data.budget_tokens
+        )
+
+        # Calculate confidence based on coverage, relevance, and entropy
+        confidence = self._calculate_confidence(
+            top_sources,
+            estimated_budget,
+            input_data.budget_tokens,
+            entropy=entropy,
+        )
+        confidence_level = self._get_confidence_level(confidence)
+
         # Build the context pack within budget
         pack_markdown, budget_used, pack_evidence = self._build_pack_with_rlm_info(
             top_sources,
@@ -395,13 +411,17 @@ class MemoryTools:
             sub_query_info,
             used_llm=icd_result.get("used_llm", False) if icd_result else False,
             llm_reasoning=icd_result.get("llm_reasoning", "") if icd_result else "",
+            entropy=entropy,
+            confidence=confidence,
+            confidence_level=confidence_level,
         )
 
-        # Calculate confidence based on coverage and relevance
+        # Recalculate confidence with actual budget_used
         confidence = self._calculate_confidence(
             top_sources,
             budget_used,
             input_data.budget_tokens,
+            entropy=entropy,
         )
 
         # Create source info for output
@@ -528,6 +548,9 @@ class MemoryTools:
         sub_query_info: list[dict[str, Any]],
         used_llm: bool = False,
         llm_reasoning: str = "",
+        entropy: float = 0.0,
+        confidence: float = 0.0,
+        confidence_level: str = "",
     ) -> tuple[str, int, list[Evidence]]:
         """Build the context pack with RLM information in header."""
         pack_parts: list[str] = []
@@ -558,11 +581,16 @@ class MemoryTools:
         else:
             rlm_section = f"\n**Mode:** Pack (direct retrieval)\n"
 
-        # Add header with sources visibility and RLM info
+        # Build confidence display
+        confidence_display = f"**Confidence:** {confidence:.2f} ({confidence_level})"
+
+        # Add header with sources visibility, RLM info, and confidence
         header = f"""# ICR Context Pack
 
 **Query:** {prompt}
 {rlm_section}
+{confidence_display}
+
 **Sources Retrieved ({len(sources)} chunks):**
 {sources_summary}
 
@@ -833,20 +861,34 @@ class MemoryTools:
         sources: list[dict[str, Any]],
         used_tokens: int,
         budget_tokens: int,
+        entropy: float = 0.0,
     ) -> float:
         """Calculate confidence score for the pack."""
         if not sources:
             return 0.0
 
-        # Average source score
-        avg_score = sum(s.get("score", 0) for s in sources) / len(sources)
+        # Source relevance: average of top 5 scores
+        top_scores = [s.get("score", 0) for s in sources[:5]]
+        source_relevance = sum(top_scores) / len(top_scores) if top_scores else 0
 
-        # Budget utilization
-        utilization = min(used_tokens / budget_tokens, 1.0)
+        # Entropy factor: lower entropy = higher confidence (normalize to 0-1)
+        entropy_factor = max(0, 1 - (entropy / 5.0))
 
-        # Combined confidence
-        confidence = (avg_score * 0.6) + (utilization * 0.4)
+        # Budget utilization: higher = better (found enough content)
+        budget_util = min(used_tokens / budget_tokens, 1.0) if budget_tokens else 0
+
+        # Weighted average
+        confidence = (source_relevance * 0.5) + (entropy_factor * 0.3) + (budget_util * 0.2)
         return round(min(confidence, 1.0), 3)
+
+    def _get_confidence_level(self, confidence: float) -> str:
+        """Get human-readable confidence level description."""
+        if confidence >= 0.75:
+            return "High - clear matches found"
+        elif confidence >= 0.5:
+            return "Medium - results may need refinement"
+        else:
+            return "Low - consider more specific query"
 
     async def memory_pin(
         self,

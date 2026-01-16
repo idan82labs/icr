@@ -24,6 +24,7 @@ Output (via stdout):
 import json
 import logging
 import os
+import re
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -144,6 +145,78 @@ class ContextPack:
         sections.append(f"*Context tokens: {self.tokens_used}/{self.token_budget}*")
 
         return "\n".join(sections)
+
+
+# Continuation query detection patterns
+CONTINUATION_PATTERNS = [
+    r"that (?:function|class|file|code|method|module) (?:we|from|I|you|earlier)",
+    r"the (?:function|class|file|code|method|module) from (?:before|earlier)",
+    r"what was (?:that|the) .+",
+    r"continue with .+",
+    r"back to (?:the|that) .+",
+    r"as we discussed",
+    r"remember (?:when|that|the)",
+    r"like (?:we|I) (?:mentioned|said|discussed)",
+    r"the (?:thing|stuff|code) (?:we|I) (?:were|was) (?:working on|looking at)",
+    r"earlier (?:we|I|you)",
+    r"(?:that|the) (?:same|previous) .+",
+]
+
+
+def is_continuation_query(prompt: str) -> bool:
+    """Detect if query references pre-compaction context."""
+    prompt_lower = prompt.lower()
+    return any(re.search(p, prompt_lower) for p in CONTINUATION_PATTERNS)
+
+
+def get_pinned_context(project_root: Path) -> str:
+    """Retrieve pinned context from last compaction."""
+    pins_file = project_root / ".icr" / "pins.json"
+    if not pins_file.exists():
+        return ""
+
+    try:
+        pins = json.loads(pins_file.read_text())
+        if not pins:
+            return ""
+
+        # Format pinned items as context
+        parts = ["## Preserved Context (from before compaction)"]
+        parts.append("")
+
+        # Group pins by type
+        files = [p for p in pins if p.get("type") == "file"]
+        decisions = [p for p in pins if p.get("type") == "decision"]
+        todos = [p for p in pins if p.get("type") == "todo"]
+
+        if files:
+            parts.append("### Key Files")
+            for pin in files[:5]:
+                label = pin.get("label", "unknown")
+                score = pin.get("score", 0)
+                parts.append(f"- `{label}` (relevance: {score:.2f})")
+            parts.append("")
+
+        if decisions:
+            parts.append("### Recent Decisions")
+            for pin in decisions[:3]:
+                content = pin.get("content", "")[:200]
+                parts.append(f"- {content}")
+            parts.append("")
+
+        if todos:
+            parts.append("### Active TODOs")
+            for pin in todos[:5]:
+                content = pin.get("content", "")
+                parts.append(f"- [ ] {content}")
+            parts.append("")
+
+        parts.append("---")
+        return "\n".join(parts)
+
+    except Exception as e:
+        logger.warning(f"Failed to load pinned context: {e}")
+        return ""
 
 
 class ICRClient:
@@ -415,6 +488,16 @@ def handle_hook(input_data: dict[str, Any]) -> dict[str, Any]:
         warnings.append(f"Context pack generation failed: {e}")
         return HookOutput(warnings=warnings).to_dict()
 
+    # Check for continuation query and inject pinned context
+    additional_context = pack.to_markdown()
+    if is_continuation_query(hook_input.prompt):
+        project_root = Path(hook_input.cwd) if hook_input.cwd else Path.cwd()
+        pinned_context = get_pinned_context(project_root)
+        if pinned_context:
+            # Prepend pinned context to the pack
+            additional_context = pinned_context + "\n\n" + additional_context
+            logger.info("Injected pinned context for continuation query")
+
     # Record prompt for metrics
     try:
         client.record_prompt(
@@ -428,7 +511,7 @@ def handle_hook(input_data: dict[str, Any]) -> dict[str, Any]:
 
     # Generate output
     output = HookOutput(
-        additional_context=pack.to_markdown(),
+        additional_context=additional_context,
         warnings=warnings,
     )
 

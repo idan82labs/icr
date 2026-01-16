@@ -6,6 +6,7 @@
   "license": "MIT",
   "commands": ["ic"],
   "hooks": {
+    "SessionStart": "scripts/hook_sessionstart.py",
     "UserPromptSubmit": "scripts/hook_userpromptsubmit.py",
     "Stop": "scripts/hook_stop.py",
     "PreCompact": "scripts/hook_precompact.py"
