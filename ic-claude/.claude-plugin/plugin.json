@@ -1,0 +1,10 @@
+{
+  "name": "icr",
+  "description": "Infinite Context Runtime - Smart code retrieval that gives Claude perfect memory of your codebase",
+  "version": "0.1.0",
+  "author": {
+    "name": "ICR Team"
+  },
+  "keywords": ["context", "memory", "retrieval", "codebase", "search"],
+  "repository": "https://github.com/idan82labs/icr"
+}

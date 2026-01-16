@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "icr": {
+      "type": "stdio",
+      "command": ".icr/venv/bin/ic-mcp",
+      "args": ["--repo-root", ".", "--log-file", ".icr/mcp.log", "--log-level", "WARNING"],
+      "description": "ICR - Infinite Context Runtime for smart code retrieval"
+    }
+  }
+}
