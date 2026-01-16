@@ -67,10 +67,10 @@ class PackCompiler:
         self.include_metadata = config.pack.include_metadata
         self.include_citations = config.pack.include_citations
 
-        # Utility weights
-        self.score_weight = 0.6
-        self.contract_bonus = 0.2
-        self.pinned_bonus = 0.2
+        # Utility weights from config
+        self.score_weight = config.pack.score_weight
+        self.contract_bonus = config.pack.contract_bonus
+        self.pinned_bonus = config.pack.pinned_bonus
 
     async def compile(
         self,
@@ -337,6 +337,11 @@ class IncrementalPackCompiler:
         self._selected: list[PackItem] = []
         self._used_budget = 0
 
+        # Utility weights from config
+        self._score_weight = config.pack.score_weight
+        self._contract_bonus = config.pack.contract_bonus
+        self._pinned_bonus = config.pack.pinned_bonus
+
     def add_chunk(
         self,
         chunk: "Chunk",
@@ -354,12 +359,12 @@ class IncrementalPackCompiler:
         Returns:
             True if chunk was added to pack.
         """
-        # Create item
-        utility = 0.6 * score
+        # Create item using config weights
+        utility = self._score_weight * score
         if chunk.is_contract:
-            utility += 0.2
+            utility += self._contract_bonus
         if chunk.is_pinned:
-            utility += 0.2
+            utility += self._pinned_bonus
 
         item = PackItem(
             chunk=chunk,

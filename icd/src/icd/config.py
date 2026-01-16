@@ -258,6 +258,26 @@ class PackConfig(BaseModel):
         description="Include citation markers in packs",
     )
 
+    # Utility weights for knapsack packing
+    score_weight: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        description="Weight for retrieval score in utility calculation",
+    )
+    contract_bonus: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description="Utility bonus for contract chunks (interfaces, types)",
+    )
+    pinned_bonus: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description="Utility bonus for pinned chunks",
+    )
+
 
 class WatcherConfig(BaseModel):
     """File system watcher configuration."""
@@ -351,6 +371,20 @@ class RLMConfig(BaseModel):
         ge=500,
         le=10000,
         description="Token budget per RLM iteration",
+    )
+
+    # Aggregator weights
+    duplicate_boost: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description="Score boost for chunks appearing in multiple results",
+    )
+    source_diversity_bonus: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="Bonus for diverse source coverage",
     )
 
 
