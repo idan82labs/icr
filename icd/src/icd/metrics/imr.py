@@ -130,11 +130,13 @@ class IMRTracker:
         # Compute metrics
         retrieved_impactful = len(impactful_set & retrieved_set)
 
-        # Total impactful = explicitly impactful + missed
-        total_impactful = len(impactful_set) + len(missed_set)
+        # Total impactful = union of explicitly impactful and missed (avoid double-counting)
+        all_impactful = impactful_set | missed_set
+        total_impactful = len(all_impactful)
 
-        # Missed = total impactful - retrieved impactful
-        missed_impactful = total_impactful - retrieved_impactful
+        # Missed = impactful chunks that were not retrieved
+        actually_missed = all_impactful - retrieved_set
+        missed_impactful = len(actually_missed)
 
         # IMR
         imr = missed_impactful / total_impactful if total_impactful > 0 else 0.0
@@ -191,8 +193,10 @@ class IMRTracker:
             impactful_set = set(record.impactful_ids)
             missed_set = set(record.missed_ids)
 
-            total_impactful += len(impactful_set) + len(missed_set)
-            total_retrieved_impactful += len(impactful_set & retrieved_set)
+            # Use union to avoid double-counting
+            all_impactful = impactful_set | missed_set
+            total_impactful += len(all_impactful)
+            total_retrieved_impactful += len(all_impactful & retrieved_set)
             total_retrieved += len(retrieved_set)
 
         missed_impactful = total_impactful - total_retrieved_impactful

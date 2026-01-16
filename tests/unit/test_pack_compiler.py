@@ -1,122 +1,72 @@
 """
 Unit tests for the pack compiler (knapsack packing) module.
 
-Tests cover:
-- Knapsack optimization
-- Mandatory items
-- Budget constraints
-- Overflow handling
-- Pack formatting
+Tests the REAL implementation from icd.pack.compiler.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import sys
+from pathlib import Path
 from typing import Any
+from dataclasses import dataclass, field
 
 import pytest
+import numpy as np
+
+# Add icd/src to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "icd" / "src"))
+
+from icd.config import Config
+from icd.pack.compiler import PackCompiler, PackItem, PackResult, IncrementalPackCompiler
+from icd.retrieval.hybrid import Chunk
 
 
 # ==============================================================================
-# Test Data Types
+# Test Fixtures
 # ==============================================================================
 
-@dataclass
-class PackItem:
-    """Item to be packed into context."""
-
-    id: str
-    content: str
-    tokens: int
-    score: float
-    mandatory: bool = False
-    metadata: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class PackResult:
-    """Result of pack compilation."""
-
-    content: str
-    total_tokens: int
-    items: list[str]
-    overflow_items: list[str]
-    citations: dict[str, str]
-
-
-# ==============================================================================
-# Knapsack Algorithm Implementation
-# ==============================================================================
-
-def knapsack_pack(
-    items: list[PackItem],
-    budget: int,
-    mandatory_ids: set[str] | None = None,
-) -> tuple[list[PackItem], list[PackItem]]:
-    """
-    Pack items using knapsack optimization.
-
-    Maximizes total score while staying within token budget.
-    Mandatory items are always included first.
-
-    Args:
-        items: List of items to pack
-        budget: Token budget
-        mandatory_ids: IDs of items that must be included
-
-    Returns:
-        Tuple of (selected items, overflow items)
-    """
-    mandatory_ids = mandatory_ids or set()
-
-    # Separate mandatory and optional items
-    mandatory = [item for item in items if item.id in mandatory_ids or item.mandatory]
-    optional = [item for item in items if item.id not in mandatory_ids and not item.mandatory]
-
-    # Start with mandatory items
-    selected = list(mandatory)
-    remaining_budget = budget - sum(item.tokens for item in mandatory)
-
-    if remaining_budget < 0:
-        # Mandatory items exceed budget - include what we can
-        selected = []
-        remaining_budget = budget
-        for item in mandatory:
-            if item.tokens <= remaining_budget:
-                selected.append(item)
-                remaining_budget -= item.tokens
-        overflow = [item for item in mandatory if item not in selected]
-        return selected, overflow + optional
-
-    # Sort optional items by score/token ratio (greedy approximation)
-    optional_sorted = sorted(
-        optional,
-        key=lambda x: x.score / max(x.tokens, 1),
-        reverse=True
+@pytest.fixture
+def test_config(tmp_path: Path) -> Config:
+    """Create a test configuration."""
+    return Config(
+        project_root=tmp_path,
+        data_dir=tmp_path / ".icd",
     )
 
-    overflow = []
-    for item in optional_sorted:
-        if item.tokens <= remaining_budget:
-            selected.append(item)
-            remaining_budget -= item.tokens
-        else:
-            overflow.append(item)
 
-    return selected, overflow
+@pytest.fixture
+def pack_compiler(test_config: Config) -> PackCompiler:
+    """Create a pack compiler with test config."""
+    return PackCompiler(test_config)
 
 
-def format_pack(items: list[PackItem], include_citations: bool = True) -> str:
-    """Format selected items into markdown pack."""
-    lines = []
-
-    for i, item in enumerate(items, 1):
-        if include_citations:
-            lines.append(f"<!-- [{i}] {item.id} -->")
-        lines.append(item.content)
-        lines.append("")
-
-    return "\n".join(lines)
+def make_chunk(
+    chunk_id: str,
+    content: str,
+    token_count: int,
+    file_path: str = "test.py",
+    start_line: int = 1,
+    end_line: int = 10,
+    symbol_name: str | None = None,
+    symbol_type: str | None = None,
+    is_contract: bool = False,
+    is_pinned: bool = False,
+) -> Chunk:
+    """Helper to create test chunks."""
+    return Chunk(
+        chunk_id=chunk_id,
+        file_path=file_path,
+        content=content,
+        start_line=start_line,
+        end_line=end_line,
+        symbol_name=symbol_name,
+        symbol_type=symbol_type,
+        language="python",
+        token_count=token_count,
+        is_contract=is_contract,
+        is_pinned=is_pinned,
+    )
 
 
 # ==============================================================================
@@ -126,148 +76,142 @@ def format_pack(items: list[PackItem], include_citations: bool = True) -> str:
 class TestKnapsackOptimization:
     """Tests for knapsack optimization algorithm."""
 
-    def test_basic_packing(self):
+    @pytest.mark.asyncio
+    async def test_basic_packing(self, pack_compiler: PackCompiler):
         """Test basic item packing within budget."""
-        items = [
-            PackItem(id="a", content="Content A", tokens=100, score=0.9),
-            PackItem(id="b", content="Content B", tokens=200, score=0.8),
-            PackItem(id="c", content="Content C", tokens=150, score=0.7),
+        chunks = [
+            make_chunk("a", "Content A", 100),
+            make_chunk("b", "Content B", 200),
+            make_chunk("c", "Content C", 150),
         ]
+        scores = [0.9, 0.8, 0.7]
         budget = 300
 
-        selected, overflow = knapsack_pack(items, budget)
+        result = await pack_compiler.compile(chunks, scores, budget_tokens=budget)
 
         # Should select items that fit
-        total_tokens = sum(item.tokens for item in selected)
-        assert total_tokens <= budget
+        assert result.token_count <= budget
 
-    def test_maximize_score(self):
-        """Test that packing maximizes total score."""
-        items = [
-            PackItem(id="high_score", content="High", tokens=100, score=0.95),
-            PackItem(id="low_score", content="Low", tokens=100, score=0.5),
+    @pytest.mark.asyncio
+    async def test_maximize_utility(self, pack_compiler: PackCompiler):
+        """Test that packing maximizes utility."""
+        chunks = [
+            make_chunk("high", "High score", 100),
+            make_chunk("low", "Low score", 100),
         ]
+        scores = [0.95, 0.1]
         budget = 100
 
-        selected, overflow = knapsack_pack(items, budget)
+        result = await pack_compiler.compile(chunks, scores, budget_tokens=budget)
 
         # Should select high score item
-        assert len(selected) == 1
-        assert selected[0].id == "high_score"
+        assert len(result.chunk_ids) == 1
+        assert result.chunk_ids[0] == "high"
 
-    def test_score_per_token_ratio(self):
-        """Test that score/token ratio is considered."""
-        items = [
-            PackItem(id="efficient", content="E", tokens=50, score=0.8),   # 0.016 per token
-            PackItem(id="bulky", content="B", tokens=200, score=0.85),     # 0.00425 per token
-        ]
-        budget = 100
-
-        selected, overflow = knapsack_pack(items, budget)
-
-        # Should prefer efficient item
-        assert any(item.id == "efficient" for item in selected)
-
-    def test_respects_budget(self):
+    @pytest.mark.asyncio
+    async def test_respects_budget(self, pack_compiler: PackCompiler):
         """Test that budget is never exceeded."""
-        items = [
-            PackItem(id=f"item_{i}", content=f"Content {i}", tokens=100, score=0.5 + i * 0.1)
+        chunks = [
+            make_chunk(f"item_{i}", f"Content {i}", 100)
             for i in range(10)
         ]
+        scores = [0.5 + i * 0.05 for i in range(10)]
         budget = 350
 
-        selected, overflow = knapsack_pack(items, budget)
+        result = await pack_compiler.compile(chunks, scores, budget_tokens=budget)
 
-        total_tokens = sum(item.tokens for item in selected)
-        assert total_tokens <= budget
+        assert result.token_count <= budget
 
-    def test_all_items_fit(self):
+    @pytest.mark.asyncio
+    async def test_all_items_fit(self, pack_compiler: PackCompiler):
         """Test when all items fit within budget."""
-        items = [
-            PackItem(id="a", content="A", tokens=100, score=0.9),
-            PackItem(id="b", content="B", tokens=100, score=0.8),
+        chunks = [
+            make_chunk("a", "A", 100),
+            make_chunk("b", "B", 100),
         ]
+        scores = [0.9, 0.8]
         budget = 500
 
-        selected, overflow = knapsack_pack(items, budget)
+        result = await pack_compiler.compile(chunks, scores, budget_tokens=budget)
 
-        assert len(selected) == 2
-        assert len(overflow) == 0
+        assert len(result.chunk_ids) == 2
 
-    def test_no_items_fit(self):
+    @pytest.mark.asyncio
+    async def test_no_items_fit(self, pack_compiler: PackCompiler):
         """Test when no items fit within budget."""
-        items = [
-            PackItem(id="a", content="A", tokens=500, score=0.9),
-            PackItem(id="b", content="B", tokens=600, score=0.8),
+        chunks = [
+            make_chunk("a", "A", 500),
+            make_chunk("b", "B", 600),
         ]
+        scores = [0.9, 0.8]
         budget = 100
 
-        selected, overflow = knapsack_pack(items, budget)
+        result = await pack_compiler.compile(chunks, scores, budget_tokens=budget)
 
-        assert len(selected) == 0
-        assert len(overflow) == 2
+        assert len(result.chunk_ids) == 0
+        assert result.token_count == 0
+
+    @pytest.mark.asyncio
+    async def test_empty_chunks(self, pack_compiler: PackCompiler):
+        """Test with empty chunks list."""
+        result = await pack_compiler.compile([], [], budget_tokens=1000)
+
+        assert len(result.chunk_ids) == 0
+        assert result.content == ""
 
 
 # ==============================================================================
-# Mandatory Items Tests
+# Contract and Pinned Item Tests
 # ==============================================================================
 
-class TestMandatoryItems:
-    """Tests for mandatory item handling."""
+class TestContractAndPinnedItems:
+    """Tests for contract and pinned item handling."""
 
-    def test_mandatory_always_included(self):
-        """Test that mandatory items are always included."""
-        items = [
-            PackItem(id="mandatory", content="Must include", tokens=100, score=0.5, mandatory=True),
-            PackItem(id="optional", content="Optional", tokens=100, score=0.9, mandatory=False),
+    @pytest.mark.asyncio
+    async def test_contract_bonus(self, pack_compiler: PackCompiler):
+        """Test that contracts get utility bonus."""
+        chunks = [
+            make_chunk("contract", "Interface definition", 100, is_contract=True),
+            make_chunk("normal", "Normal code", 100, is_contract=False),
         ]
-        budget = 150
-
-        selected, overflow = knapsack_pack(items, budget)
-
-        # Mandatory must be included
-        assert any(item.id == "mandatory" for item in selected)
-
-    def test_mandatory_by_id(self):
-        """Test mandatory items specified by ID."""
-        items = [
-            PackItem(id="item_a", content="A", tokens=100, score=0.5),
-            PackItem(id="item_b", content="B", tokens=100, score=0.9),
-        ]
-        mandatory_ids = {"item_a"}
-        budget = 150
-
-        selected, overflow = knapsack_pack(items, budget, mandatory_ids)
-
-        assert any(item.id == "item_a" for item in selected)
-
-    def test_mandatory_exceeds_budget(self):
-        """Test when mandatory items alone exceed budget."""
-        items = [
-            PackItem(id="m1", content="M1", tokens=200, score=0.5, mandatory=True),
-            PackItem(id="m2", content="M2", tokens=200, score=0.5, mandatory=True),
-            PackItem(id="opt", content="Opt", tokens=100, score=0.9),
-        ]
-        budget = 300
-
-        selected, overflow = knapsack_pack(items, budget)
-
-        # Should include what mandatory items fit
-        total = sum(item.tokens for item in selected)
-        assert total <= budget
-
-    def test_mandatory_priority_over_score(self):
-        """Test that mandatory takes priority over high scores."""
-        items = [
-            PackItem(id="mandatory_low", content="M", tokens=100, score=0.3, mandatory=True),
-            PackItem(id="optional_high", content="O", tokens=100, score=0.99),
-        ]
+        # Same base score, but contract should have higher utility
+        scores = [0.5, 0.5]
         budget = 100
 
-        selected, overflow = knapsack_pack(items, budget)
+        result = await pack_compiler.compile(chunks, scores, budget_tokens=budget)
 
-        # Mandatory should be selected despite lower score
-        assert selected[0].id == "mandatory_low"
+        # Contract should be selected due to bonus
+        assert "contract" in result.chunk_ids
+
+    @pytest.mark.asyncio
+    async def test_pinned_bonus(self, pack_compiler: PackCompiler):
+        """Test that pinned items get utility bonus."""
+        chunks = [
+            make_chunk("pinned", "Pinned content", 100, is_pinned=True),
+            make_chunk("normal", "Normal code", 100, is_pinned=False),
+        ]
+        scores = [0.5, 0.5]
+        budget = 100
+
+        result = await pack_compiler.compile(chunks, scores, budget_tokens=budget)
+
+        # Pinned should be selected due to bonus
+        assert "pinned" in result.chunk_ids
+
+    @pytest.mark.asyncio
+    async def test_contract_and_pinned_combined(self, pack_compiler: PackCompiler):
+        """Test combined contract and pinned bonus."""
+        chunks = [
+            make_chunk("both", "Interface", 100, is_contract=True, is_pinned=True),
+            make_chunk("normal", "Normal", 100),
+        ]
+        scores = [0.3, 0.6]  # Lower base score but bonuses should help
+        budget = 100
+
+        result = await pack_compiler.compile(chunks, scores, budget_tokens=budget)
+
+        # Combined bonuses should overcome lower score
+        assert "both" in result.chunk_ids
 
 
 # ==============================================================================
@@ -277,339 +221,316 @@ class TestMandatoryItems:
 class TestBudgetConstraints:
     """Tests for budget constraint handling."""
 
-    def test_exact_budget_fit(self):
+    @pytest.mark.asyncio
+    async def test_exact_budget_fit(self, pack_compiler: PackCompiler):
         """Test items that exactly fit budget."""
-        items = [
-            PackItem(id="a", content="A", tokens=250, score=0.9),
-            PackItem(id="b", content="B", tokens=250, score=0.8),
+        chunks = [
+            make_chunk("a", "A", 250),
+            make_chunk("b", "B", 250),
         ]
+        scores = [0.9, 0.8]
         budget = 500
 
-        selected, overflow = knapsack_pack(items, budget)
+        result = await pack_compiler.compile(chunks, scores, budget_tokens=budget)
 
-        total = sum(item.tokens for item in selected)
-        assert total == budget
+        assert result.token_count <= budget
+        assert len(result.chunk_ids) == 2
 
-    def test_zero_budget(self):
-        """Test with zero budget."""
-        items = [
-            PackItem(id="a", content="A", tokens=100, score=0.9),
-        ]
-        budget = 0
+    @pytest.mark.asyncio
+    async def test_very_small_budget(self, pack_compiler: PackCompiler):
+        """Test with very small budget that can't fit any items."""
+        chunks = [make_chunk("a", "A", 100)]
+        scores = [0.9]
+        budget = 10  # Too small to fit the 100-token chunk
 
-        selected, overflow = knapsack_pack(items, budget)
+        result = await pack_compiler.compile(chunks, scores, budget_tokens=budget)
 
-        assert len(selected) == 0
+        assert len(result.chunk_ids) == 0
 
-    def test_large_budget(self):
-        """Test with budget larger than all items."""
-        items = [
-            PackItem(id=f"item_{i}", content=f"Content {i}", tokens=100, score=0.5)
-            for i in range(10)
-        ]
-        budget = 10000
+    @pytest.mark.asyncio
+    async def test_max_budget_cap(self, pack_compiler: PackCompiler):
+        """Test that max budget is enforced."""
+        chunks = [make_chunk(f"item_{i}", f"Content {i}", 5000) for i in range(10)]
+        scores = [0.9] * 10
+        # Request more than max_budget_tokens
+        budget = 1000000
 
-        selected, overflow = knapsack_pack(items, budget)
+        result = await pack_compiler.compile(chunks, scores, budget_tokens=budget)
 
-        assert len(selected) == 10
-        assert len(overflow) == 0
-
-    @pytest.mark.parametrize("budget", [1000, 4000, 8000, 16000, 32000])
-    def test_various_budgets(self, budget):
-        """Test packing with various budget sizes."""
-        items = [
-            PackItem(id=f"item_{i}", content=f"Content {i}", tokens=500, score=0.5 + i * 0.01)
-            for i in range(20)
-        ]
-
-        selected, overflow = knapsack_pack(items, budget)
-
-        total = sum(item.tokens for item in selected)
-        assert total <= budget
+        # Should be capped by max_budget_tokens
+        assert result.token_count <= pack_compiler.max_budget
 
 
 # ==============================================================================
-# Overflow Handling Tests
+# Pack Result Tests
 # ==============================================================================
 
-class TestOverflowHandling:
-    """Tests for overflow item handling."""
+class TestPackResult:
+    """Tests for pack result generation."""
 
-    def test_overflow_contains_rejected_items(self):
-        """Test that overflow contains items that didn't fit."""
-        items = [
-            PackItem(id="fits", content="Fits", tokens=100, score=0.9),
-            PackItem(id="overflow", content="Overflow", tokens=500, score=0.8),
+    @pytest.mark.asyncio
+    async def test_result_contains_chunks(self, pack_compiler: PackCompiler):
+        """Test that result contains selected chunk IDs."""
+        chunks = [
+            make_chunk("chunk_1", "def foo():\n    pass", 50),
+            make_chunk("chunk_2", "def bar():\n    pass", 50),
         ]
+        scores = [0.9, 0.8]
         budget = 200
 
-        selected, overflow = knapsack_pack(items, budget)
+        result = await pack_compiler.compile(chunks, scores, budget_tokens=budget)
 
-        assert any(item.id == "overflow" for item in overflow)
+        assert "chunk_1" in result.chunk_ids
+        assert "chunk_2" in result.chunk_ids
 
-    def test_overflow_preserves_items(self):
-        """Test that all items are in either selected or overflow."""
-        items = [
-            PackItem(id=f"item_{i}", content=f"Content {i}", tokens=100 + i * 50, score=0.5)
-            for i in range(10)
+    @pytest.mark.asyncio
+    async def test_result_has_citations(self, pack_compiler: PackCompiler):
+        """Test that result includes citations."""
+        chunks = [make_chunk("test_chunk", "def test():\n    pass", 50, symbol_name="test")]
+        scores = [0.9]
+        budget = 200
+
+        result = await pack_compiler.compile(chunks, scores, budget_tokens=budget)
+
+        assert len(result.citations) > 0
+        assert "[1]" in result.citations
+
+    @pytest.mark.asyncio
+    async def test_result_has_metadata(self, pack_compiler: PackCompiler):
+        """Test that result includes metadata."""
+        chunks = [
+            make_chunk("c1", "Content", 50, is_contract=True),
+            make_chunk("c2", "Content", 50, is_pinned=True),
         ]
-        budget = 500
+        scores = [0.9, 0.8]
+        budget = 200
 
-        selected, overflow = knapsack_pack(items, budget)
+        result = await pack_compiler.compile(chunks, scores, budget_tokens=budget)
 
-        all_ids = {item.id for item in selected} | {item.id for item in overflow}
-        original_ids = {item.id for item in items}
+        assert "num_chunks" in result.metadata
+        assert "num_contracts" in result.metadata
+        assert "num_pinned" in result.metadata
 
-        assert all_ids == original_ids
-
-    def test_empty_overflow_when_all_fit(self):
-        """Test overflow is empty when all items fit."""
-        items = [
-            PackItem(id="a", content="A", tokens=100, score=0.9),
-            PackItem(id="b", content="B", tokens=100, score=0.8),
+    @pytest.mark.asyncio
+    async def test_content_formatting(self, pack_compiler: PackCompiler):
+        """Test that content is properly formatted."""
+        chunks = [
+            make_chunk("chunk_1", "def hello():\n    print('world')", 50, symbol_name="hello"),
         ]
-        budget = 500
+        scores = [0.9]
+        budget = 200
 
-        selected, overflow = knapsack_pack(items, budget)
+        result = await pack_compiler.compile(chunks, scores, budget_tokens=budget)
 
-        assert len(overflow) == 0
+        # Content should contain the chunk
+        assert "hello" in result.content or "print" in result.content
 
 
 # ==============================================================================
-# Pack Formatting Tests
+# Incremental Compiler Tests
 # ==============================================================================
 
-class TestPackFormatting:
-    """Tests for pack output formatting."""
+class TestIncrementalCompiler:
+    """Tests for incremental pack compilation."""
 
-    def test_format_with_citations(self):
-        """Test pack formatting with citations."""
-        items = [
-            PackItem(id="chunk_123", content="def hello():\n    pass", tokens=50, score=0.9),
-        ]
+    def test_add_chunk_basic(self, test_config: Config):
+        """Test basic chunk addition."""
+        compiler = IncrementalPackCompiler(test_config)
+        chunk = make_chunk("test", "Content", 100)
 
-        pack = format_pack(items, include_citations=True)
+        added = compiler.add_chunk(chunk, score=0.9)
 
-        assert "<!-- [1] chunk_123 -->" in pack
-        assert "def hello():" in pack
+        assert added is True
 
-    def test_format_without_citations(self):
-        """Test pack formatting without citations."""
-        items = [
-            PackItem(id="chunk_123", content="def hello():\n    pass", tokens=50, score=0.9),
-        ]
+    def test_add_chunk_exceeds_budget(self, test_config: Config):
+        """Test adding chunk that exceeds budget."""
+        compiler = IncrementalPackCompiler(test_config)
+        compiler.budget = 100
 
-        pack = format_pack(items, include_citations=False)
+        # Fill up budget
+        chunk1 = make_chunk("a", "A", 80)
+        compiler.add_chunk(chunk1, score=0.5)
 
-        assert "<!--" not in pack
-        assert "def hello():" in pack
+        # Try to add another that doesn't fit
+        chunk2 = make_chunk("b", "B", 80)
+        added = compiler.add_chunk(chunk2, score=0.4)
 
-    def test_format_multiple_items(self):
-        """Test formatting multiple items."""
-        items = [
-            PackItem(id="a", content="Content A", tokens=50, score=0.9),
-            PackItem(id="b", content="Content B", tokens=50, score=0.8),
-            PackItem(id="c", content="Content C", tokens=50, score=0.7),
-        ]
+        # Should not be added (lower utility, doesn't fit)
+        assert added is False
 
-        pack = format_pack(items, include_citations=True)
+    def test_replace_lower_utility(self, test_config: Config):
+        """Test replacing lower utility item."""
+        compiler = IncrementalPackCompiler(test_config)
+        compiler.budget = 100
 
-        assert "<!-- [1] a -->" in pack
-        assert "<!-- [2] b -->" in pack
-        assert "<!-- [3] c -->" in pack
+        # Add low utility item
+        chunk1 = make_chunk("low", "Low", 50)
+        compiler.add_chunk(chunk1, score=0.3)
 
-    def test_format_preserves_content(self):
-        """Test that formatting preserves item content."""
-        code = """def complex_function():
-    x = 1
-    y = 2
-    return x + y"""
+        # Add high utility item that replaces it
+        chunk2 = make_chunk("high", "High", 50)
+        added = compiler.add_chunk(chunk2, score=0.9)
 
-        items = [PackItem(id="test", content=code, tokens=50, score=0.9)]
+        assert added is True
 
-        pack = format_pack(items)
+    def test_get_pack(self, test_config: Config):
+        """Test getting compiled pack."""
+        compiler = IncrementalPackCompiler(test_config)
+        chunk = make_chunk("test", "Content", 100)
+        compiler.add_chunk(chunk, score=0.9)
 
-        assert code in pack
+        result = compiler.get_pack(query="test query")
 
-    def test_empty_items(self):
-        """Test formatting with no items."""
-        pack = format_pack([])
-        assert pack == ""
+        assert len(result.chunk_ids) == 1
+        assert result.token_count == 100
+
+    def test_reset(self, test_config: Config):
+        """Test resetting compiler state."""
+        compiler = IncrementalPackCompiler(test_config)
+        chunk = make_chunk("test", "Content", 100)
+        compiler.add_chunk(chunk, score=0.9)
+
+        compiler.reset()
+
+        result = compiler.get_pack()
+        assert len(result.chunk_ids) == 0
 
 
 # ==============================================================================
-# Edge Cases Tests
+# Edge Cases
 # ==============================================================================
 
-class TestPackCompilerEdgeCases:
-    """Tests for edge cases in pack compilation."""
+class TestEdgeCases:
+    """Tests for edge cases."""
 
-    def test_empty_items_list(self):
-        """Test packing with empty items list."""
-        selected, overflow = knapsack_pack([], budget=1000)
-
-        assert len(selected) == 0
-        assert len(overflow) == 0
-
-    def test_single_item_fits(self):
-        """Test packing single item that fits."""
-        items = [PackItem(id="only", content="Only item", tokens=100, score=0.9)]
-
-        selected, overflow = knapsack_pack(items, budget=200)
-
-        assert len(selected) == 1
-        assert len(overflow) == 0
-
-    def test_single_item_too_large(self):
-        """Test packing single item too large for budget."""
-        items = [PackItem(id="large", content="Large item", tokens=500, score=0.9)]
-
-        selected, overflow = knapsack_pack(items, budget=100)
-
-        assert len(selected) == 0
-        assert len(overflow) == 1
-
-    def test_zero_token_items(self):
-        """Test handling of zero-token items."""
-        items = [
-            PackItem(id="zero", content="", tokens=0, score=0.9),
-            PackItem(id="normal", content="Normal", tokens=100, score=0.8),
+    @pytest.mark.asyncio
+    async def test_zero_token_chunk(self, pack_compiler: PackCompiler):
+        """Test handling of zero-token chunks."""
+        chunks = [
+            make_chunk("zero", "", 0),
+            make_chunk("normal", "Content", 100),
         ]
+        scores = [0.9, 0.8]
+        budget = 50
 
-        selected, overflow = knapsack_pack(items, budget=50)
+        result = await pack_compiler.compile(chunks, scores, budget_tokens=budget)
 
-        # Zero-token items should always fit
-        assert any(item.id == "zero" for item in selected)
+        # Zero-token chunk should fit
+        assert "zero" in result.chunk_ids
 
-    def test_equal_score_items(self):
-        """Test packing items with equal scores."""
-        items = [
-            PackItem(id=f"item_{i}", content=f"Content {i}", tokens=100, score=0.5)
+    @pytest.mark.asyncio
+    async def test_single_chunk(self, pack_compiler: PackCompiler):
+        """Test with single chunk."""
+        chunks = [make_chunk("only", "Content", 100)]
+        scores = [0.9]
+        budget = 200
+
+        result = await pack_compiler.compile(chunks, scores, budget_tokens=budget)
+
+        assert len(result.chunk_ids) == 1
+
+    @pytest.mark.asyncio
+    async def test_equal_scores(self, pack_compiler: PackCompiler):
+        """Test with equal scores."""
+        chunks = [
+            make_chunk(f"item_{i}", f"Content {i}", 100)
             for i in range(5)
         ]
+        scores = [0.5] * 5
+        budget = 300
 
-        selected, overflow = knapsack_pack(items, budget=300)
+        result = await pack_compiler.compile(chunks, scores, budget_tokens=budget)
 
-        # Should select 3 items (300 tokens)
-        assert len(selected) == 3
-
-    def test_very_large_tokens(self):
-        """Test handling of very large token counts."""
-        items = [
-            PackItem(id="huge", content="Huge", tokens=1_000_000, score=0.9),
-            PackItem(id="tiny", content="Tiny", tokens=10, score=0.1),
-        ]
-
-        selected, overflow = knapsack_pack(items, budget=100)
-
-        assert any(item.id == "tiny" for item in selected)
-        assert any(item.id == "huge" for item in overflow)
+        # Should select 3 items (300 tokens / 100 per item = 3)
+        assert len(result.chunk_ids) == 3
 
 
 # ==============================================================================
 # Performance Tests
 # ==============================================================================
 
-class TestPackCompilerPerformance:
+class TestPerformance:
     """Tests for pack compiler performance."""
 
-    def test_many_items(self):
+    @pytest.mark.asyncio
+    async def test_many_items(self, pack_compiler: PackCompiler):
         """Test packing with many items."""
-        items = [
-            PackItem(id=f"item_{i}", content=f"Content {i}", tokens=50 + i, score=0.5 + i * 0.001)
+        chunks = [
+            make_chunk(f"item_{i}", f"Content {i}", 50 + i)
             for i in range(100)
         ]
+        scores = [0.5 + i * 0.005 for i in range(100)]
+        budget = 2000
 
-        selected, overflow = knapsack_pack(items, budget=2000)
+        result = await pack_compiler.compile(chunks, scores, budget_tokens=budget)
 
-        total = sum(item.tokens for item in selected)
-        assert total <= 2000
+        assert result.token_count <= budget
+        assert len(result.chunk_ids) > 0
 
-    def test_varied_sizes(self):
+    @pytest.mark.asyncio
+    async def test_varied_sizes(self, pack_compiler: PackCompiler):
         """Test packing with varied item sizes."""
         import random
         random.seed(42)
 
-        items = [
-            PackItem(
-                id=f"item_{i}",
-                content=f"Content {i}",
-                tokens=random.randint(50, 500),
-                score=random.random()
-            )
+        chunks = [
+            make_chunk(f"item_{i}", f"Content {i}", random.randint(50, 500))
             for i in range(50)
         ]
+        scores = [random.random() for _ in range(50)]
+        budget = 3000
 
-        selected, overflow = knapsack_pack(items, budget=3000)
+        result = await pack_compiler.compile(chunks, scores, budget_tokens=budget)
 
-        # Should utilize budget efficiently
-        total = sum(item.tokens for item in selected)
-        assert total <= 3000
-        # Should use at least 80% of budget (greedy should be efficient)
-        assert total >= 2400 or len(overflow) == 0
+        assert result.token_count <= budget
 
 
 # ==============================================================================
 # Integration Tests
 # ==============================================================================
 
-class TestPackCompilerIntegration:
+class TestIntegration:
     """Integration tests for pack compilation."""
 
-    def test_full_pack_pipeline(self):
+    @pytest.mark.asyncio
+    async def test_full_pipeline(self, pack_compiler: PackCompiler):
         """Test complete pack compilation pipeline."""
-        # Simulate retrieval results
         chunks = [
-            PackItem(
-                id="chunk_auth_handler",
-                content="async function handleAuth(token) { ... }",
-                tokens=150,
-                score=0.95,
+            make_chunk(
+                "chunk_auth",
+                "async function handleAuth(token) { ... }",
+                150,
+                file_path="src/auth/handler.ts",
+                symbol_name="handleAuth",
+                symbol_type="function",
             ),
-            PackItem(
-                id="chunk_validator",
-                content="function validateToken(token) { ... }",
-                tokens=100,
-                score=0.85,
+            make_chunk(
+                "chunk_validator",
+                "function validateToken(token) { ... }",
+                100,
+                file_path="src/auth/validator.ts",
+                symbol_name="validateToken",
+                symbol_type="function",
             ),
-            PackItem(
-                id="chunk_types",
-                content="interface AuthToken { ... }",
-                tokens=80,
-                score=0.75,
-                metadata={"is_contract": True},
-            ),
-            PackItem(
-                id="chunk_utils",
-                content="export const helpers = { ... }",
-                tokens=200,
-                score=0.4,
+            make_chunk(
+                "chunk_types",
+                "interface AuthToken { ... }",
+                80,
+                file_path="src/types/shared.ts",
+                symbol_name="AuthToken",
+                symbol_type="interface",
+                is_contract=True,
             ),
         ]
-
+        scores = [0.95, 0.85, 0.75]
         budget = 400
 
-        # Pack
-        selected, overflow = knapsack_pack(chunks, budget)
+        result = await pack_compiler.compile(
+            chunks, scores, budget_tokens=budget, query="How does auth work?"
+        )
 
-        # Format
-        pack = format_pack(selected, include_citations=True)
-
-        # Verify
-        total_tokens = sum(item.tokens for item in selected)
-        assert total_tokens <= budget
-        assert len(pack) > 0
-
-    def test_pack_with_pinned_items(self):
-        """Test pack with pinned (mandatory) items."""
-        items = [
-            PackItem(id="pinned_1", content="Pinned content", tokens=200, score=0.3, mandatory=True),
-            PackItem(id="high_score", content="High score", tokens=150, score=0.99),
-            PackItem(id="low_score", content="Low score", tokens=100, score=0.2),
-        ]
-
-        selected, overflow = knapsack_pack(items, budget=300)
-
-        # Pinned must be included
-        selected_ids = {item.id for item in selected}
-        assert "pinned_1" in selected_ids
+        # Verify result structure
+        assert result.token_count <= budget
+        assert len(result.chunk_ids) >= 1
+        assert result.content  # Non-empty content
+        assert result.metadata.get("query") == "How does auth work?"
