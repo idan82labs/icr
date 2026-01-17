@@ -1,0 +1,22 @@
+# ICR Project Ignore File
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Data directories
+.icd/
+.icr/
+
+# Documentation not needed for indexing
+docs/

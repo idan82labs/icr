@@ -413,6 +413,43 @@ class SQLiteStore:
                 return row[0]
             return None
 
+    async def get_chunk_with_content(self, chunk_id: str) -> "Chunk | None":
+        """
+        Get full chunk object (metadata + content) by ID.
+
+        Args:
+            chunk_id: Chunk identifier.
+
+        Returns:
+            Chunk object or None if not found.
+        """
+        from icd.retrieval.hybrid import Chunk
+
+        if not self._db:
+            raise RuntimeError("Database not initialized")
+
+        async with self._db.execute(
+            "SELECT * FROM chunks WHERE chunk_id = ?",
+            (chunk_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                metadata = self._row_to_metadata(row, cursor.description)
+                # Get content (last column)
+                content = row[-1] if row else ""
+                return Chunk(
+                    chunk_id=metadata.chunk_id,
+                    file_path=metadata.file_path,
+                    content=content,
+                    start_line=metadata.start_line,
+                    end_line=metadata.end_line,
+                    symbol_name=metadata.symbol_name,
+                    symbol_type=metadata.symbol_type,
+                    language=metadata.language,
+                    token_count=metadata.token_count,
+                )
+            return None
+
     async def get_chunks_by_file(self, file_path: str) -> list[ChunkMetadata]:
         """
         Get all chunks for a file.

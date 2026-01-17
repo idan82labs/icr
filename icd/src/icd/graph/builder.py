@@ -424,12 +424,16 @@ class CodeGraphBuilder:
     def _extract_imports(
         self, root: Any, pattern: str, file_path: str, content: str, language: str
     ) -> None:
-        """Extract import statements."""
+        """Extract import statements.
+
+        Note: tree-sitter byte positions are for UTF-8 encoded content.
+        """
+        content_bytes = content.encode("utf-8")
         file_node_id = f"file:{file_path}"
 
         for node in self._find_nodes_by_type(root, pattern):
             # Extract imported module/symbol names
-            import_text = content[node.start_byte : node.end_byte]
+            import_text = content_bytes[node.start_byte : node.end_byte].decode("utf-8")
 
             if language == "python":
                 # Handle: import foo, from foo import bar
@@ -514,31 +518,44 @@ class CodeGraphBuilder:
             results.extend(self._find_nodes_by_type(child, node_type))
         return results
 
-    def _get_node_name(self, node: Any, content: str) -> str | None:
-        """Extract name from a definition node."""
+    def _get_node_name(self, node: Any, content: str, content_bytes: bytes | None = None) -> str | None:
+        """Extract name from a definition node.
+
+        Note: tree-sitter byte positions are for UTF-8 encoded content,
+        so we need to slice from bytes and decode.
+        """
+        if content_bytes is None:
+            content_bytes = content.encode("utf-8")
+
         for child in node.children:
             if child.type in ("identifier", "name", "property_identifier", "type_identifier"):
-                return content[child.start_byte : child.end_byte]
+                return content_bytes[child.start_byte : child.end_byte].decode("utf-8")
             # Handle decorated definitions
             if child.type in ("function_definition", "class_definition"):
-                return self._get_node_name(child, content)
+                return self._get_node_name(child, content, content_bytes)
         return None
 
-    def _get_callee_name(self, call_node: Any, content: str) -> str | None:
-        """Extract the function name being called."""
+    def _get_callee_name(self, call_node: Any, content: str, content_bytes: bytes | None = None) -> str | None:
+        """Extract the function name being called.
+
+        Note: tree-sitter byte positions are for UTF-8 encoded content.
+        """
+        if content_bytes is None:
+            content_bytes = content.encode("utf-8")
+
         for child in call_node.children:
             if child.type in ("identifier", "property_identifier"):
-                return content[child.start_byte : child.end_byte]
+                return content_bytes[child.start_byte : child.end_byte].decode("utf-8")
             if child.type == "member_expression":
                 # Get the property being accessed (e.g., obj.method -> method)
                 for sub in child.children:
                     if sub.type == "property_identifier":
-                        return content[sub.start_byte : sub.end_byte]
+                        return content_bytes[sub.start_byte : sub.end_byte].decode("utf-8")
             if child.type == "attribute":
                 # Python: obj.method
                 for sub in child.children:
                     if sub.type == "identifier":
-                        return content[sub.start_byte : sub.end_byte]
+                        return content_bytes[sub.start_byte : sub.end_byte].decode("utf-8")
         return None
 
     def _get_containing_symbol(self, node: Any, file_path: str, content: str) -> str | None:
@@ -589,7 +606,11 @@ class CodeGraphBuilder:
         return None
 
     def _get_base_classes(self, class_node: Any, content: str, language: str) -> list[str]:
-        """Extract base class names from class definition."""
+        """Extract base class names from class definition.
+
+        Note: tree-sitter byte positions are for UTF-8 encoded content.
+        """
+        content_bytes = content.encode("utf-8")
         bases = []
 
         if language == "python":
@@ -598,7 +619,7 @@ class CodeGraphBuilder:
                 if child.type == "argument_list":
                     for arg in child.children:
                         if arg.type == "identifier":
-                            bases.append(content[arg.start_byte : arg.end_byte])
+                            bases.append(content_bytes[arg.start_byte : arg.end_byte].decode("utf-8"))
 
         elif language in ("typescript", "javascript"):
             # Look for class_heritage (extends Foo)
@@ -608,7 +629,7 @@ class CodeGraphBuilder:
                         if sub.type == "extends_clause":
                             for name_node in sub.children:
                                 if name_node.type in ("identifier", "type_identifier"):
-                                    bases.append(content[name_node.start_byte : name_node.end_byte])
+                                    bases.append(content_bytes[name_node.start_byte : name_node.end_byte].decode("utf-8"))
 
         return bases
 

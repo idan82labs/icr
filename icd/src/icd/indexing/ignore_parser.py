@@ -221,7 +221,11 @@ Pipfile.lock
 composer.lock
 Cargo.lock
 
-# Build artifacts
+# Build artifacts and output directories
+build/
+dist/
+*.egg-info/
+.eggs/
 *.map
 *.d.ts.map
 

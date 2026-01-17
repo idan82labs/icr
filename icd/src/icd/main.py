@@ -265,7 +265,10 @@ class ICDService:
                 for file_path in target.rglob(f"*{ext}"):
                     # Skip hidden/ignored directories
                     parts = file_path.parts
-                    if any(p.startswith(".") or p in {"node_modules", "__pycache__", "venv", ".venv"} for p in parts):
+                    if any(p.startswith(".") or p in {
+                        "node_modules", "__pycache__", "venv", ".venv",
+                        "build", "dist", "eggs", ".eggs", "*.egg-info"
+                    } for p in parts):
                         continue
 
                     try:

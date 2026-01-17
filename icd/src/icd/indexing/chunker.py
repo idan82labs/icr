@@ -362,16 +362,24 @@ class Chunker:
 
         return symbols
 
-    def _get_symbol_name(self, node: Any, content: str) -> str | None:
-        """Extract the name of a symbol from its AST node."""
+    def _get_symbol_name(self, node: Any, content: str, content_bytes: bytes | None = None) -> str | None:
+        """Extract the name of a symbol from its AST node.
+
+        Note: tree-sitter byte positions are for UTF-8 encoded content,
+        so we need to slice from bytes and decode.
+        """
+        if content_bytes is None:
+            content_bytes = content.encode("utf-8")
+
         # Look for name/identifier child nodes
         for child in node.children:
             if child.type in ("identifier", "name", "property_identifier"):
-                return content[child.start_byte : child.end_byte]
+                # Use bytes slicing and decode
+                return content_bytes[child.start_byte : child.end_byte].decode("utf-8")
 
             # For decorated definitions, look deeper
             if child.type in ("function_definition", "class_definition"):
-                return self._get_symbol_name(child, content)
+                return self._get_symbol_name(child, content, content_bytes)
 
         return None
 
@@ -469,7 +477,7 @@ class Chunker:
         # Check for content before first symbol
         if sorted_symbols:
             first_symbol = sorted_symbols[0][0]
-            if first_symbol.start_line > 0:
+            if first_symbol.start_point[0] > 0:
                 gap_content = content[: first_symbol.start_byte].rstrip()
                 if gap_content:
                     token_count = self._token_counter.count(gap_content)
