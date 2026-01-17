@@ -1,0 +1,108 @@
+{
+  "ICR Full (CRAG + True RLM + Graph)": {
+    "config_name": "ICR Full (CRAG + True RLM + Graph)",
+    "queries_evaluated": 13,
+    "avg_mrr": 0.0,
+    "avg_ndcg_5": 0.0,
+    "avg_ndcg_10": 0.0,
+    "avg_recall_5": 0.0,
+    "avg_recall_10": 0.0,
+    "avg_precision_5": 0.0,
+    "avg_precision_10": 0.0,
+    "latency_p50": 207.4167089886032,
+    "latency_p95": 381.73302479553934,
+    "latency_p99": 490.603704950772,
+    "per_category": {
+      "conceptual": {
+        "mrr": 0.0,
+        "ndcg_10": 0.0,
+        "recall_10": 0.0
+      },
+      "symbol": {
+        "mrr": 0.0,
+        "ndcg_10": 0.0,
+        "recall_10": 0.0
+      },
+      "trace": {
+        "mrr": 0.0,
+        "ndcg_10": 0.0,
+        "recall_10": 0.0
+      },
+      "impact": {
+        "mrr": 0.0,
+        "ndcg_10": 0.0,
+        "recall_10": 0.0
+      }
+    },
+    "per_difficulty": {
+      "easy": {
+        "mrr": 0.0,
+        "ndcg_10": 0.0,
+        "recall_10": 0.0
+      },
+      "medium": {
+        "mrr": 0.0,
+        "ndcg_10": 0.0,
+        "recall_10": 0.0
+      },
+      "hard": {
+        "mrr": 0.0,
+        "ndcg_10": 0.0,
+        "recall_10": 0.0
+      }
+    }
+  },
+  "ICR Basic (Hybrid only)": {
+    "config_name": "ICR Basic (Hybrid only)",
+    "queries_evaluated": 13,
+    "avg_mrr": 0.0,
+    "avg_ndcg_5": 0.0,
+    "avg_ndcg_10": 0.0,
+    "avg_recall_5": 0.0,
+    "avg_recall_10": 0.0,
+    "avg_precision_5": 0.0,
+    "avg_precision_10": 0.0,
+    "latency_p50": 0.4820419999305159,
+    "latency_p95": 0.7913832028862086,
+    "latency_p99": 0.9109430469106881,
+    "per_category": {
+      "conceptual": {
+        "mrr": 0.0,
+        "ndcg_10": 0.0,
+        "recall_10": 0.0
+      },
+      "symbol": {
+        "mrr": 0.0,
+        "ndcg_10": 0.0,
+        "recall_10": 0.0
+      },
+      "trace": {
+        "mrr": 0.0,
+        "ndcg_10": 0.0,
+        "recall_10": 0.0
+      },
+      "impact": {
+        "mrr": 0.0,
+        "ndcg_10": 0.0,
+        "recall_10": 0.0
+      }
+    },
+    "per_difficulty": {
+      "easy": {
+        "mrr": 0.0,
+        "ndcg_10": 0.0,
+        "recall_10": 0.0
+      },
+      "medium": {
+        "mrr": 0.0,
+        "ndcg_10": 0.0,
+        "recall_10": 0.0
+      },
+      "hard": {
+        "mrr": 0.0,
+        "ndcg_10": 0.0,
+        "recall_10": 0.0
+      }
+    }
+  }
+}
