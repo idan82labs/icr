@@ -220,52 +220,53 @@ def get_pinned_context(project_root: Path) -> str:
 
 
 class ICRClient:
-    """Client for interacting with ICR core services."""
+    """Client for interacting with ICD (the actual retrieval engine)."""
 
-    def __init__(self, config_path: str | None = None):
-        """Initialize ICR client."""
-        self.config_path = config_path or os.environ.get(
-            "ICR_CONFIG_PATH",
-            os.path.expanduser("~/.icr/config.yaml")
-        )
-        self.db_path = os.environ.get(
-            "ICR_DB_PATH",
-            os.path.expanduser("~/.icr/icr.db")
-        )
-        self._config: dict[str, Any] | None = None
+    def __init__(self, project_root: str | None = None):
+        """Initialize ICR client with project root."""
+        self.project_root = Path(project_root) if project_root else None
+        self._service = None
         self._initialized = False
+        self._config: dict[str, Any] = {}
 
     def _ensure_initialized(self) -> bool:
-        """Ensure ICR is initialized, return False if not available."""
+        """Initialize ICD service if not already done."""
         if self._initialized:
-            return True
+            return self._service is not None
 
-        # Check if config exists
-        if not Path(self.config_path).exists():
-            logger.warning(f"ICR config not found at {self.config_path}")
+        self._initialized = True  # Mark as attempted
+
+        if not self.project_root:
+            logger.debug("No project root specified")
             return False
 
-        # Try to load config
+        # Check for ICD index
+        icd_dir = self.project_root / ".icd"
+        if not icd_dir.exists():
+            logger.debug(f"No .icd directory at {self.project_root}")
+            return False
+
         try:
-            import yaml
-            with open(self.config_path) as f:
-                self._config = yaml.safe_load(f)
-            self._initialized = True
+            # Import ICD components
+            from icd.config import load_config
+            from icd.main import ICDService
+
+            config = load_config(project_root=self.project_root)
+            self._service = ICDService(config)
+            self._config = {"max_context_tokens": config.pack.default_budget_tokens}
+            logger.info(f"ICD service initialized for {self.project_root}")
             return True
-        except ImportError:
-            logger.warning("PyYAML not installed, using defaults")
-            self._config = {}
-            self._initialized = True
-            return True
+        except ImportError as e:
+            logger.warning(f"ICD not available: {e}")
+            return False
         except Exception as e:
-            logger.warning(f"Failed to load config: {e}")
+            logger.warning(f"Failed to initialize ICD: {e}")
             return False
 
     def get_config(self, key: str, default: Any = None) -> Any:
         """Get configuration value."""
-        if not self._ensure_initialized():
-            return default
-        return self._config.get(key, default) if self._config else default
+        self._ensure_initialized()
+        return self._config.get(key, default)
 
     def get_priors(
         self,
@@ -274,135 +275,103 @@ class ICRClient:
         limit: int = 5,
     ) -> list[dict[str, Any]]:
         """
-        Retrieve relevant priors for the given query.
+        Retrieve relevant code chunks for the given query.
 
-        This queries the ICR vector store for semantically similar context.
+        Uses the actual ICD hybrid retrieval (embedding + BM25 + QIR).
         """
-        if not self._ensure_initialized():
+        if not self._ensure_initialized() or not self._service:
             return []
 
         try:
-            # Try to use icr-core if available
-            from icr.core.retrieval import PriorRetriever
-            retriever = PriorRetriever(db_path=self.db_path)
-            return retriever.search(query, limit=limit, cwd=cwd)
-        except ImportError:
-            logger.debug("icr-core not available, skipping prior retrieval")
-            return []
+            import asyncio
+
+            async def retrieve():
+                async with self._service.session():
+                    result = await self._service.retrieve(query=query, limit=limit)
+                    return result
+
+            result = asyncio.run(retrieve())
+
+            # Convert chunks to prior format (matches to_markdown expectations)
+            priors = []
+            for chunk, score in zip(result.chunks, result.scores):
+                # Format source as file:line (symbol) for display
+                source = f"{chunk.file_path}:{chunk.start_line}"
+                if chunk.symbol_name:
+                    source += f" ({chunk.symbol_name})"
+
+                priors.append({
+                    "type": "code",
+                    "source": source,
+                    "relevance": score,
+                    "content": chunk.content,
+                    "file_path": chunk.file_path,
+                    "start_line": chunk.start_line,
+                    "end_line": chunk.end_line,
+                    "symbol_name": chunk.symbol_name,
+                    "symbol_type": chunk.symbol_type,
+                })
+
+            logger.info(f"Retrieved {len(priors)} priors for query")
+            return priors
+
         except Exception as e:
             logger.warning(f"Prior retrieval failed: {e}")
             return []
 
     def get_invariants(self) -> list[dict[str, Any]]:
-        """Retrieve all pinned invariants."""
-        if not self._ensure_initialized():
+        """Retrieve pinned invariants (from .icr/pins.json if exists)."""
+        if not self.project_root:
+            return []
+
+        pins_file = self.project_root / ".icr" / "pins.json"
+        if not pins_file.exists():
             return []
 
         try:
-            from icr.core.invariants import InvariantStore
-            store = InvariantStore(db_path=self.db_path)
-            return store.get_all_active()
-        except ImportError:
-            logger.debug("icr-core not available, skipping invariants")
-            return []
+            import json
+            pins = json.loads(pins_file.read_text())
+            return [p for p in pins if p.get("type") == "invariant"]
         except Exception as e:
-            logger.warning(f"Invariant retrieval failed: {e}")
+            logger.warning(f"Failed to load invariants: {e}")
             return []
 
     def get_environment_summary(self, cwd: str | None = None) -> str:
         """Get a summary of the current environment."""
-        if not self._ensure_initialized():
-            return ""
+        parts = []
+        check_path = Path(cwd) if cwd else self.project_root
 
-        try:
-            from icr.core.environment import EnvironmentAnalyzer
-            analyzer = EnvironmentAnalyzer(db_path=self.db_path)
-            return analyzer.summarize(cwd=cwd)
-        except ImportError:
-            # Provide basic environment info as fallback
-            parts = []
-            if cwd:
-                parts.append(f"Working directory: {cwd}")
-                # Check for common project indicators
-                cwd_path = Path(cwd)
-                if (cwd_path / "package.json").exists():
-                    parts.append("Project type: Node.js")
-                elif (cwd_path / "pyproject.toml").exists():
-                    parts.append("Project type: Python")
-                elif (cwd_path / "Cargo.toml").exists():
-                    parts.append("Project type: Rust")
-                elif (cwd_path / "go.mod").exists():
-                    parts.append("Project type: Go")
-            return "\n".join(parts) if parts else ""
-        except Exception as e:
-            logger.warning(f"Environment summary failed: {e}")
-            return ""
+        if check_path:
+            # Check for common project indicators
+            if (check_path / "package.json").exists():
+                parts.append("Project type: Node.js")
+            elif (check_path / "pyproject.toml").exists():
+                parts.append("Project type: Python")
+            elif (check_path / "Cargo.toml").exists():
+                parts.append("Project type: Rust")
+            elif (check_path / "go.mod").exists():
+                parts.append("Project type: Go")
+
+        return "\n".join(parts) if parts else ""
 
     def get_active_files(
         self,
         cwd: str | None = None,
         limit: int = 10,
     ) -> list[dict[str, Any]]:
-        """Get recently active files with relevance scores."""
-        if not self._ensure_initialized():
-            return []
-
-        try:
-            from icr.core.files import FileTracker
-            tracker = FileTracker(db_path=self.db_path)
-            return tracker.get_recent(cwd=cwd, limit=limit)
-        except ImportError:
-            logger.debug("icr-core not available, skipping file tracking")
-            return []
-        except Exception as e:
-            logger.warning(f"Active files retrieval failed: {e}")
-            return []
+        """Get recently active files - not implemented yet."""
+        # TODO: Could track recently accessed files from ICD queries
+        return []
 
     def get_ledger_summary(self, session_id: str, limit: int = 5) -> str:
-        """Get summary of recent ledger entries."""
-        if not self._ensure_initialized():
-            return ""
-
-        try:
-            from icr.core.ledger import LedgerStore
-            store = LedgerStore(db_path=self.db_path)
-            entries = store.get_recent(session_id=session_id, limit=limit)
-
-            if not entries:
-                return ""
-
-            lines = []
-            for entry in entries:
-                entry_type = entry.get("type", "unknown")
-                content = entry.get("content", "")
-                lines.append(f"- [{entry_type}] {content}")
-
-            return "\n".join(lines)
-        except ImportError:
-            logger.debug("icr-core not available, skipping ledger")
-            return ""
-        except Exception as e:
-            logger.warning(f"Ledger summary failed: {e}")
-            return ""
+        """Get summary of recent ledger entries - not implemented yet."""
+        # TODO: Could use .icr/ledger.json for persistent session state
+        return ""
 
     def record_prompt(self, session_id: str, prompt: str, cwd: str | None = None) -> None:
-        """Record the prompt for metrics and learning."""
-        if not self._ensure_initialized():
-            return
-
-        try:
-            from icr.core.metrics import MetricsRecorder
-            recorder = MetricsRecorder(db_path=self.db_path)
-            recorder.record_prompt(
-                session_id=session_id,
-                prompt=prompt,
-                cwd=cwd,
-                timestamp=datetime.utcnow(),
-            )
-        except ImportError:
-            logger.debug("icr-core not available, skipping metrics")
-        except Exception as e:
-            logger.warning(f"Metrics recording failed: {e}")
+        """Record the prompt for metrics - not implemented yet."""
+        # TODO: Could record to .icr/metrics.json for analysis
+        pass
 
 
 def build_context_pack(
@@ -472,18 +441,11 @@ def handle_hook(input_data: dict[str, Any]) -> dict[str, Any]:
         logger.info("ICR hooks disabled via environment variable")
         return HookOutput(warnings=["ICR hooks disabled"]).to_dict()
 
-    # Find config path based on cwd (check .icd/ and .icr/)
-    config_path = None
-    if hook_input.cwd:
-        project_root = Path(hook_input.cwd)
-        for config_dir in [".icd", ".icr"]:
-            candidate = project_root / config_dir / "config.yaml"
-            if candidate.exists():
-                config_path = str(candidate)
-                break
+    # Determine project root from cwd
+    project_root = hook_input.cwd if hook_input.cwd else None
 
-    # Initialize client with project config
-    client = ICRClient(config_path=config_path)
+    # Initialize client with project root
+    client = ICRClient(project_root=project_root)
 
     # Check if auto-injection is enabled
     if not client.get_config("auto_inject", True):
