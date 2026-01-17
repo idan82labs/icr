@@ -288,6 +288,34 @@ class ICDService:
             # Build graph
             self._graph_builder.build_from_files(files_data)
 
+            # Link chunks to graph nodes
+            if self._sqlite_store:
+                from types import SimpleNamespace
+                chunk_ids = await self._sqlite_store.get_all_chunk_ids()
+                chunks = []
+                for chunk_id in chunk_ids:
+                    metadata = await self._sqlite_store.get_chunk(chunk_id)
+                    if metadata:
+                        chunks.append(SimpleNamespace(
+                            chunk_id=chunk_id,
+                            file_path=metadata.file_path,
+                            start_line=metadata.start_line,
+                            end_line=metadata.end_line,
+                            symbol_name=metadata.symbol_name,
+                        ))
+
+                if hasattr(self._graph_builder, 'link_chunks_to_nodes'):
+                    self._graph_builder.link_chunks_to_nodes(chunks)
+                    nodes_with_chunks = sum(
+                        1 for n in self._graph_builder.get_nodes().values()
+                        if getattr(n, 'chunk_id', None) is not None
+                    )
+                    logger.info(
+                        "Linked chunks to graph nodes",
+                        chunks=len(chunks),
+                        nodes_with_chunks=nodes_with_chunks,
+                    )
+
             # Save graph to disk
             import json
             graph_path = self.config.absolute_data_dir / "code_graph.json"

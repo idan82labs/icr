@@ -126,6 +126,13 @@ class QueryReformulator:
     For true CRAG, you'd use LLM-based reformulation.
     """
 
+    # Words that are too generic to use alone in reformulations
+    GENERIC_WORDS = {
+        'class', 'function', 'method', 'implementation', 'definition',
+        'code', 'file', 'module', 'the', 'how', 'what', 'where', 'when',
+        'does', 'is', 'are', 'work', 'works', 'type', 'interface',
+    }
+
     def reformulate(self, query: str, failed_chunks: list["Chunk"]) -> list[str]:
         """
         Generate reformulated queries.
@@ -134,32 +141,37 @@ class QueryReformulator:
         """
         reformulations = []
 
-        # Strategy 1: Extract key terms and search for definitions
-        terms = re.findall(r'[A-Z][a-z]+(?:[A-Z][a-z]+)*|[a-z]+(?:_[a-z]+)+', query)
-        for term in terms[:3]:
-            reformulations.append(f"definition of {term}")
+        # Extract compound terms (CamelCase, snake_case) - keep them whole
+        camel_terms = re.findall(r'[A-Z][a-z]+(?:[A-Z][a-z]+)+', query)
+        snake_terms = re.findall(r'[a-z]+(?:_[a-z]+)+', query)
 
-        # Strategy 2: Convert question to keyword search
-        # "How does X work?" -> "X implementation"
-        if query.lower().startswith("how"):
-            keywords = re.sub(r'^how\s+(does|do|is|are|can|could)\s+', '', query.lower())
-            keywords = re.sub(r'\s+(work|function|operate)\??$', '', keywords)
-            reformulations.append(f"{keywords} implementation")
+        # Filter out generic words
+        terms = [t for t in (camel_terms + snake_terms) if t.lower() not in self.GENERIC_WORDS]
+
+        # Strategy 1: Use compound terms directly with implementation suffix
+        for term in terms[:2]:
+            reformulations.append(f"{term} implementation")
+            reformulations.append(term)
+
+        # Strategy 2: Convert questions to keyword search
+        if query.lower().startswith(("how", "what", "where", "when")):
+            keywords = re.sub(r'^(how|what|where|when)\s+(does|do|is|are)\s+', '', query.lower())
+            keywords = keywords.strip('?')
+            if keywords and keywords.lower() not in self.GENERIC_WORDS:
+                reformulations.append(keywords)
 
         # Strategy 3: Focus on file types mentioned
-        if "test" in query.lower():
+        if "test" in query.lower() and terms:
             reformulations.append("test " + " ".join(terms[:2]))
-
-        # Strategy 4: Look for related interfaces/types
-        reformulations.append(f"interface {' '.join(terms[:2])}")
 
         # Deduplicate while preserving order
         seen = set()
         unique = []
         for q in reformulations:
-            if q.lower() not in seen:
-                seen.add(q.lower())
-                unique.append(q)
+            q_clean = q.strip()
+            if q_clean and q_clean.lower() not in seen:
+                seen.add(q_clean.lower())
+                unique.append(q_clean)
 
         return unique[:3]  # Return at most 3 reformulations
 
@@ -175,15 +187,17 @@ class CRAGRetriever:
         self,
         config: "Config",
         base_retriever: Any,  # HybridRetriever
+        correct_threshold: float = 0.5,    # Lowered from 0.6
+        incorrect_threshold: float = 0.15,  # Lowered from 0.3
     ) -> None:
         self.config = config
         self.base_retriever = base_retriever
         self.evaluator = RelevanceEvaluator(config)
         self.reformulator = QueryReformulator()
 
-        # Thresholds
-        self.correct_threshold = 0.6  # Average score above this = correct
-        self.incorrect_threshold = 0.3  # Average score below this = incorrect
+        # Thresholds (configurable)
+        self.correct_threshold = correct_threshold
+        self.incorrect_threshold = incorrect_threshold
 
     async def retrieve_with_correction(
         self,

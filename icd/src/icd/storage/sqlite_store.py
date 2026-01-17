@@ -357,6 +357,18 @@ class SQLiteStore:
         combined = f"{file_path}:{content_hash}"
         return hashlib.sha256(combined.encode()).hexdigest()[:16]
 
+    def _sanitize_fts5_query(self, query: str) -> str:
+        """Sanitize query for FTS5 syntax."""
+        # Remove characters that cause FTS5 syntax errors
+        for char in '?()&|':
+            query = query.replace(char, ' ')
+        # Escape double quotes
+        query = query.replace('"', '""')
+        # Remove leading/trailing operators
+        query = query.strip('*:')
+        # Collapse multiple spaces
+        return ' '.join(query.split())
+
     async def get_chunk(self, chunk_id: str) -> ChunkMetadata | None:
         """
         Get chunk metadata by ID.
@@ -462,8 +474,8 @@ class SQLiteStore:
         if not self._db:
             raise RuntimeError("Database not initialized")
 
-        # Escape special FTS5 characters
-        safe_query = query.replace('"', '""')
+        # Sanitize query for FTS5 syntax
+        safe_query = self._sanitize_fts5_query(query)
 
         if file_filter:
             placeholders = ",".join("?" * len(file_filter))

@@ -30,7 +30,7 @@ class RetrievalConfig:
     budget_per_iteration: int = 2000
     default_k: int = 20
     # New: CRAG and True RLM settings
-    crag_enabled: bool = True  # Enable corrective RAG
+    crag_enabled: bool = False  # Disabled until fixes complete
     true_rlm_enabled: bool = True  # Use True RLM instead of basic planner
     graph_expansion_enabled: bool = True  # Enable code graph expansion
 
