@@ -1,3 +1,40 @@
 {
-  "hooks": []
+  "hooks": [
+    {
+      "matcher": "SessionStart",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "python3 scripts/hook_sessionstart.py"
+        }
+      ]
+    },
+    {
+      "matcher": "UserPromptSubmit",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "python3 scripts/hook_userpromptsubmit.py"
+        }
+      ]
+    },
+    {
+      "matcher": "PreCompact",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "python3 scripts/hook_precompact.py"
+        }
+      ]
+    },
+    {
+      "matcher": "Stop",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "python3 scripts/hook_stop.py"
+        }
+      ]
+    }
+  ]
 }

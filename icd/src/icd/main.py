@@ -316,6 +316,163 @@ class ICDService:
 
         return pack_result
 
+    async def compile_pack_with_mode(
+        self,
+        query: str,
+        budget_tokens: int | None = None,
+        focus_paths: list[Path] | None = None,
+        mode: str = "auto",
+    ) -> PackResult:
+        """
+        Compile a context pack with explicit mode selection.
+
+        Supports three modes:
+        - "auto": Use ModeGate to decide between pack and RLM
+        - "pack": Simple direct retrieval + pack compilation
+        - "rlm": Iterative retrieval with query decomposition
+
+        Args:
+            query: Natural language query.
+            budget_tokens: Token budget for the pack.
+            focus_paths: Paths to prioritize.
+            mode: Retrieval mode ("auto", "pack", "rlm").
+
+        Returns:
+            PackResult with compiled content and mode metadata.
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        if not self._retriever or not self._pack_compiler:
+            raise RuntimeError("Components not initialized")
+
+        # Load API key from .env if available
+        env_file = self.config.project_root / ".icr" / ".env"
+        if env_file.exists():
+            import os
+            for line in env_file.read_text().splitlines():
+                if "=" in line and not line.startswith("#"):
+                    key, value = line.split("=", 1)
+                    os.environ[key.strip()] = value.strip()
+
+        budget = budget_tokens or self.config.pack.default_budget_tokens
+
+        # Initial retrieval for gating decision
+        retrieval_result = await self.retrieve(query=query, focus_paths=focus_paths)
+
+        # Determine mode
+        from icd.pack.gating import ModeGate, RetrievalMode
+
+        actual_mode = mode
+        mode_reason = ""
+        sub_queries_executed = []
+
+        if mode == "auto":
+            gate = ModeGate(self.config)
+            decision = gate.decide(retrieval_result, query)
+            actual_mode = decision.mode.value
+            mode_reason = decision.reason
+            logger.info(
+                "Mode gate decision",
+                mode=actual_mode,
+                confidence=decision.confidence,
+                reason=mode_reason,
+                signals=decision.signals,
+            )
+
+        if actual_mode == "rlm":
+            # Execute RLM pipeline
+            from icd.rlm.planner import RLMPlanner
+            from icd.rlm.aggregator import Aggregator
+
+            planner = RLMPlanner(self.config)
+            aggregator = Aggregator(self.config)
+
+            # Create plan with LLM if available
+            plan = await planner.create_plan_with_llm(query, retrieval_result)
+
+            # Collect all results for aggregation
+            all_results = [(None, retrieval_result.chunks, retrieval_result.scores)]
+            sub_queries_executed.append({
+                "query": query,
+                "type": "initial",
+                "results": len(retrieval_result.chunks),
+            })
+
+            # Execute sub-queries
+            while True:
+                sub_query = planner.get_next_sub_query(plan)
+                if sub_query is None:
+                    break
+
+                # Execute sub-query
+                sub_result = await self._retriever.retrieve(
+                    query=sub_query.query,
+                    limit=self.config.rlm.budget_per_iteration // 100,
+                )
+
+                # Track results
+                all_results.append((sub_query, sub_result.chunks, sub_result.scores))
+                sub_queries_executed.append({
+                    "query": sub_query.query,
+                    "type": sub_query.query_type.value,
+                    "results": len(sub_result.chunks),
+                })
+
+                # Update plan
+                planner.update_plan(plan, sub_query, sub_result.chunks)
+
+                # Check stopping condition
+                aggregated = aggregator.aggregate(plan, all_results)
+                if not planner.should_continue(plan, aggregated.entropy):
+                    break
+
+            # Final aggregation
+            aggregated = aggregator.aggregate(plan, all_results)
+
+            # Compile pack from aggregated results
+            pack_result = await self._pack_compiler.compile(
+                chunks=aggregated.chunks,
+                scores=aggregated.scores,
+                budget_tokens=budget,
+                query=query,
+            )
+
+            # Add RLM metadata
+            pack_result.metadata.update({
+                "mode": "rlm",
+                "mode_reason": mode_reason or "RLM mode selected",
+                "sub_queries": sub_queries_executed,
+                "used_llm": plan.metadata.get("used_llm", False),
+                "llm_reasoning": plan.metadata.get("llm_reasoning", ""),
+                "initial_entropy": retrieval_result.entropy,
+                "final_entropy": aggregated.entropy,
+            })
+
+            logger.info(
+                "RLM pack compiled",
+                sub_queries=len(sub_queries_executed),
+                chunks=len(aggregated.chunks),
+                used_llm=plan.metadata.get("used_llm", False),
+            )
+
+        else:
+            # Simple pack mode
+            pack_result = await self._pack_compiler.compile(
+                chunks=retrieval_result.chunks,
+                scores=retrieval_result.scores,
+                budget_tokens=budget,
+                query=query,
+            )
+
+            pack_result.metadata.update({
+                "mode": "pack",
+                "mode_reason": mode_reason or "Pack mode selected",
+                "entropy": retrieval_result.entropy,
+            })
+
+        return pack_result
+
     async def pin_chunk(self, chunk_id: str, reason: str | None = None) -> bool:
         """
         Pin a chunk as an invariant.
@@ -459,6 +616,7 @@ def index(ctx: click.Context) -> None:
 @click.option("--limit", "-n", type=int, default=10, help="Number of results")
 @click.option("--pack", "-p", is_flag=True, help="Compile results into a pack")
 @click.option("--budget", "-b", type=int, help="Token budget for pack")
+@click.option("--mode", "-m", type=click.Choice(["auto", "pack", "rlm"]), default="auto", help="Retrieval mode: auto (let gating decide), pack (simple), rlm (iterative)")
 @click.pass_context
 def search(
     ctx: click.Context,
@@ -466,6 +624,7 @@ def search(
     limit: int,
     pack: bool,
     budget: int | None,
+    mode: str,
 ) -> None:
     """Search the index."""
     config = ctx.obj["config"]
@@ -474,13 +633,22 @@ def search(
         service = ICDService(config)
         async with service.session():
             if pack:
-                result = await service.compile_pack(
+                result = await service.compile_pack_with_mode(
                     query=query,
                     budget_tokens=budget,
+                    mode=mode,
                 )
                 click.echo(result.content)
+                # Show mode info
+                if hasattr(result, 'metadata') and result.metadata:
+                    mode_used = result.metadata.get('mode', 'pack')
+                    reason = result.metadata.get('mode_reason', '')
+                    click.echo(f"\n[Mode: {mode_used}] {reason}", err=True)
+                    if result.metadata.get('sub_queries'):
+                        click.echo(f"[Sub-queries executed: {len(result.metadata['sub_queries'])}]", err=True)
             else:
                 result = await service.retrieve(query=query, limit=limit)
+                click.echo(f"\n[Entropy: {result.entropy:.3f}]", err=True)
                 for i, (chunk, score) in enumerate(
                     zip(result.chunks, result.scores), 1
                 ):

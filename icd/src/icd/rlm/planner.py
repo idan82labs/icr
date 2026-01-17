@@ -25,8 +25,10 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
-# Check if LLM decomposition is available
-LLM_DECOMPOSITION_AVAILABLE = bool(os.environ.get("ANTHROPIC_API_KEY"))
+
+def is_llm_decomposition_available() -> bool:
+    """Check if LLM decomposition is available (dynamic check)."""
+    return bool(os.environ.get("ANTHROPIC_API_KEY"))
 
 
 class QueryType(str, Enum):
@@ -155,7 +157,7 @@ class RLMPlanner:
         Returns:
             RetrievalPlan with decomposed sub-queries.
         """
-        if use_llm and LLM_DECOMPOSITION_AVAILABLE:
+        if use_llm and is_llm_decomposition_available():
             try:
                 from icd.rlm.llm_decomposer import LLMDecomposer
 
