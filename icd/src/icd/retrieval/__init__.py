@@ -6,8 +6,10 @@ Provides:
 - MMR diversity selection
 - Retrieval entropy computation
 - Cross-encoder reranking
+- CRAG (Corrective RAG) for quality-aware retrieval
 """
 
+from icd.retrieval.crag import CRAGRetriever, create_crag_retriever
 from icd.retrieval.entropy import EntropyCalculator
 from icd.retrieval.hybrid import HybridRetriever
 from icd.retrieval.mmr import MMRSelector
@@ -18,4 +20,6 @@ __all__ = [
     "MMRSelector",
     "EntropyCalculator",
     "CrossEncoderReranker",
+    "CRAGRetriever",
+    "create_crag_retriever",
 ]
