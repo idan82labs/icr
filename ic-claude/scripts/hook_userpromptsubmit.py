@@ -472,8 +472,18 @@ def handle_hook(input_data: dict[str, Any]) -> dict[str, Any]:
         logger.info("ICR hooks disabled via environment variable")
         return HookOutput(warnings=["ICR hooks disabled"]).to_dict()
 
-    # Initialize client
-    client = ICRClient()
+    # Find config path based on cwd (check .icd/ and .icr/)
+    config_path = None
+    if hook_input.cwd:
+        project_root = Path(hook_input.cwd)
+        for config_dir in [".icd", ".icr"]:
+            candidate = project_root / config_dir / "config.yaml"
+            if candidate.exists():
+                config_path = str(candidate)
+                break
+
+    # Initialize client with project config
+    client = ICRClient(config_path=config_path)
 
     # Check if auto-injection is enabled
     if not client.get_config("auto_inject", True):
