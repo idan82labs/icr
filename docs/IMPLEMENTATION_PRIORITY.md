@@ -160,10 +160,12 @@ result = await run_true_rlm(
 | `icd/src/icd/retrieval/crag.py` | ✅ Created | Corrective RAG |
 | `icd/src/icd/retrieval/hybrid.py` | ✅ Modified | Integrated reranker |
 | `icd/src/icd/graph/__init__.py` | ✅ Created | Graph module exports |
-| `icd/src/icd/graph/builder.py` | ✅ Created | Code graph construction |
+| `icd/src/icd/graph/builder.py` | ✅ Modified | Graph serialization added |
 | `icd/src/icd/graph/traversal.py` | ✅ Created | Graph-aware retrieval |
 | `icd/src/icd/rlm/true_rlm.py` | ✅ Created | True RLM implementation |
 | `icd/src/icd/config.py` | ✅ Modified | New config options |
+| `icd/src/icd/main.py` | ✅ Modified | Graph building during index |
+| `ic-mcp/src/ic_mcp/icd_bridge.py` | ✅ Modified | CRAG, True RLM, graph integration |
 | `config/default_config.yaml` | ✅ Modified | Documented options |
 
 ---
@@ -185,19 +187,45 @@ result = await run_true_rlm(
 
 ---
 
+## ✅ COMPLETED - Integration (Phase 3)
+
+### Integration Work (DONE)
+
+All Tier 1-3 components have been wired into the retrieval pipeline:
+
+1. **CRAG Integration** ✅
+   - `ICDBridge` now wraps `HybridRetriever` with `CRAGRetriever`
+   - Quality-aware retrieval with automatic reformulation
+   - Configurable via `crag_enabled` flag
+
+2. **True RLM Integration** ✅
+   - `_execute_true_rlm()` method in `ICDBridge`
+   - Falls back to basic RLM if True RLM unavailable
+   - LLM-generated retrieval programs with parallel execution
+
+3. **Code Graph Building** ✅
+   - `CodeGraphBuilder.to_dict()` / `load_from_dict()` for persistence
+   - `ICDService.index_directory()` now builds graph automatically
+   - Graph saved to `.icd/code_graph.json`
+
+4. **Graph Retrieval** ✅
+   - `GraphRetriever` integrated into `ICDBridge`
+   - Multi-hop traversal following code dependencies
+   - Configurable via `graph_expansion_enabled` flag
+
+**Files modified:**
+- `ic-mcp/src/ic_mcp/icd_bridge.py` - Added CRAG, True RLM, graph support
+- `icd/src/icd/main.py` - Added graph building during indexing
+- `icd/src/icd/graph/builder.py` - Added serialization methods
+
+---
+
 ## Remaining Work
 
 ### Not Yet Implemented:
-1. **MCP Integration for True RLM** - Expose RLM operations as MCP tools
-2. **Sandboxed Code Execution** - Let Claude write and execute exploration code
-3. **Benchmark Suite** - Quantitative evaluation against CodeSearchNet
-4. **Learning-Based Thresholds** - Replace magic numbers with learned parameters
-
-### Integration Tasks:
-1. Wire up True RLM to ic-mcp memory_pack tool
-2. Add CRAG as optional retrieval mode
-3. Build code graph on indexing
-4. Add graph traversal to MCP tools
+1. **Sandboxed Code Execution** - Let Claude write and execute exploration code
+2. **Benchmark Suite** - Quantitative evaluation against CodeSearchNet
+3. **Learning-Based Thresholds** - Replace magic numbers with learned parameters
 
 ---
 

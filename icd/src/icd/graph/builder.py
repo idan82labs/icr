@@ -752,3 +752,117 @@ class CodeGraphBuilder:
             )
 
         return G
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Serialize the graph to a dictionary for persistence.
+
+        Returns:
+            Dictionary containing nodes, edges, and symbol table.
+        """
+        nodes_data = []
+        for node in self._graph_nodes.values():
+            nodes_data.append({
+                "node_id": node.node_id,
+                "node_type": node.node_type.value,
+                "name": node.name,
+                "file_path": node.file_path,
+                "start_line": node.start_line,
+                "end_line": node.end_line,
+                "chunk_id": node.chunk_id,
+                "metadata": node.metadata,
+            })
+
+        edges_data = []
+        for edge in self._graph_edges:
+            edges_data.append({
+                "source_id": edge.source_id,
+                "target_id": edge.target_id,
+                "edge_type": edge.edge_type.value,
+                "weight": edge.weight,
+                "metadata": edge.metadata,
+            })
+
+        return {
+            "version": "1.0",
+            "nodes": nodes_data,
+            "edges": edges_data,
+            "symbol_table": self._symbol_table,
+        }
+
+    def load_from_dict(self, data: dict[str, Any]) -> None:
+        """
+        Load graph from a serialized dictionary.
+
+        Args:
+            data: Dictionary containing serialized graph data.
+        """
+        # Clear existing data
+        self._graph_nodes.clear()
+        self._graph_edges.clear()
+        self._symbol_table.clear()
+
+        # Load nodes
+        for node_data in data.get("nodes", []):
+            node = GraphNode(
+                node_id=node_data["node_id"],
+                node_type=NodeType(node_data["node_type"]),
+                name=node_data["name"],
+                file_path=node_data["file_path"],
+                start_line=node_data["start_line"],
+                end_line=node_data["end_line"],
+                chunk_id=node_data.get("chunk_id"),
+                metadata=node_data.get("metadata", {}),
+            )
+            self._graph_nodes[node.node_id] = node
+
+        # Load edges
+        for edge_data in data.get("edges", []):
+            edge = GraphEdge(
+                source_id=edge_data["source_id"],
+                target_id=edge_data["target_id"],
+                edge_type=EdgeType(edge_data["edge_type"]),
+                weight=edge_data.get("weight", 1.0),
+                metadata=edge_data.get("metadata", {}),
+            )
+            self._graph_edges.append(edge)
+
+        # Load symbol table
+        self._symbol_table = data.get("symbol_table", {})
+
+        logger.info(
+            "Code graph loaded from dict",
+            nodes=len(self._graph_nodes),
+            edges=len(self._graph_edges),
+        )
+
+    async def process_file(self, file_path: Path) -> None:
+        """
+        Process a single file and add to the graph.
+
+        Args:
+            file_path: Path to the file to process.
+        """
+        if not file_path.exists():
+            return
+
+        # Determine language from extension
+        ext_to_lang = {
+            ".py": "python",
+            ".ts": "typescript",
+            ".tsx": "typescript",
+            ".js": "javascript",
+            ".jsx": "javascript",
+            ".go": "go",
+            ".rs": "rust",
+        }
+        language = ext_to_lang.get(file_path.suffix.lower())
+        if not language:
+            return
+
+        try:
+            content = file_path.read_text()
+            self._extract_symbols(file_path, content, language)
+            self._extract_relationships(file_path, content, language)
+        except Exception as e:
+            logger.debug(f"Failed to process file {file_path}: {e}")

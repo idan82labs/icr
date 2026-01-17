@@ -86,6 +86,7 @@ class ICDService:
         self._watcher: FileWatcher | None = None
         self._retriever: HybridRetriever | None = None
         self._pack_compiler: PackCompiler | None = None
+        self._graph_builder = None  # Code graph for structural analysis
 
         self._initialized = False
         self._shutdown_event = asyncio.Event()
@@ -152,6 +153,14 @@ class ICDService:
             contract_store=self._contract_store,
         )
 
+        # Initialize code graph builder
+        try:
+            from icd.graph import CodeGraphBuilder
+            self._graph_builder = CodeGraphBuilder(self.config)
+            logger.info("Code graph builder initialized")
+        except ImportError:
+            logger.debug("Code graph module not available")
+
         self._initialized = True
         logger.info("ICD service initialized")
 
@@ -200,6 +209,7 @@ class ICDService:
         self,
         path: Path | None = None,
         force: bool = False,
+        build_graph: bool = True,
     ) -> dict[str, int]:
         """
         Index a directory.
@@ -207,6 +217,7 @@ class ICDService:
         Args:
             path: Directory to index. Uses project_root if not provided.
             force: Force re-indexing of all files.
+            build_graph: Build code graph after indexing.
 
         Returns:
             Statistics about indexed files.
@@ -220,9 +231,79 @@ class ICDService:
         if self._watcher:
             stats = await self._watcher.index_directory(target, force=force)
             logger.info("Directory indexing complete", stats=stats)
+
+            # Build code graph if enabled
+            if build_graph and self._graph_builder:
+                graph_stats = await self._build_code_graph(target)
+                stats["graph_nodes"] = graph_stats.get("nodes", 0)
+                stats["graph_edges"] = graph_stats.get("edges", 0)
+
             return stats
 
         return {"files": 0, "chunks": 0, "errors": 0}
+
+    async def _build_code_graph(self, target: Path) -> dict[str, int]:
+        """
+        Build code graph from indexed files.
+
+        Args:
+            target: Root directory to scan.
+
+        Returns:
+            Statistics about graph construction.
+        """
+        if not self._graph_builder:
+            return {"nodes": 0, "edges": 0}
+
+        try:
+            # Supported extensions for graph building
+            extensions = [".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs"]
+
+            # Find all code files
+            files_data = []
+            for ext in extensions:
+                for file_path in target.rglob(f"*{ext}"):
+                    # Skip hidden/ignored directories
+                    parts = file_path.parts
+                    if any(p.startswith(".") or p in {"node_modules", "__pycache__", "venv", ".venv"} for p in parts):
+                        continue
+
+                    try:
+                        content = file_path.read_text()
+                        # Map extension to language
+                        lang_map = {
+                            ".py": "python",
+                            ".ts": "typescript",
+                            ".tsx": "typescript",
+                            ".js": "javascript",
+                            ".jsx": "javascript",
+                            ".go": "go",
+                            ".rs": "rust",
+                        }
+                        language = lang_map.get(ext, "unknown")
+                        files_data.append((file_path, content, language))
+                    except Exception:
+                        continue
+
+            # Build graph
+            self._graph_builder.build_from_files(files_data)
+
+            # Save graph to disk
+            import json
+            graph_path = self.config.absolute_data_dir / "code_graph.json"
+            graph_path.write_text(json.dumps(self._graph_builder.to_dict(), indent=2))
+
+            stats = {
+                "nodes": len(self._graph_builder.get_nodes()),
+                "edges": len(self._graph_builder.get_edges()),
+                "files_processed": len(files_data),
+            }
+            logger.info("Code graph built", **stats)
+            return stats
+
+        except Exception as e:
+            logger.error(f"Failed to build code graph: {e}")
+            return {"nodes": 0, "edges": 0, "error": str(e)}
 
     async def reindex_file(self, path: Path) -> dict[str, int]:
         """

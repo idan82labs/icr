@@ -6,6 +6,9 @@ ICD retrieval system, including:
 - HybridRetriever initialization from existing index
 - RLM auto-gating based on entropy
 - Iterative query decomposition and aggregation
+- CRAG (Corrective RAG) for quality-aware retrieval
+- True RLM with context externalization
+- Code graph traversal for multi-hop retrieval
 """
 
 from __future__ import annotations
@@ -26,12 +29,16 @@ class RetrievalConfig:
     max_rlm_iterations: int = 5
     budget_per_iteration: int = 2000
     default_k: int = 20
+    # New: CRAG and True RLM settings
+    crag_enabled: bool = True  # Enable corrective RAG
+    true_rlm_enabled: bool = True  # Use True RLM instead of basic planner
+    graph_expansion_enabled: bool = True  # Enable code graph expansion
 
 
 @dataclass
 class RLMMetrics:
     """Metrics from RLM execution."""
-    mode: str  # "pack" or "rlm"
+    mode: str  # "pack", "rlm", or "true_rlm"
     entropy: float
     iterations: int = 0
     sub_queries_executed: int = 0
@@ -39,6 +46,11 @@ class RLMMetrics:
     aggregation_dedup_ratio: float = 0.0
     used_llm_decomposition: bool = False
     llm_reasoning: str = ""
+    # New: CRAG and graph metrics
+    crag_quality: str = ""  # "correct", "corrected", "ambiguous"
+    crag_confidence: float = 0.0
+    graph_nodes_expanded: int = 0
+    true_rlm_operations: int = 0  # Number of True RLM operations executed
 
 
 @dataclass
@@ -62,6 +74,9 @@ class ICDBridge:
     - RLM auto-gating and iteration
     - Result aggregation
     - File watching for incremental updates
+    - CRAG (Corrective RAG) for quality-aware retrieval
+    - True RLM with context externalization
+    - Code graph traversal for multi-hop retrieval
     """
 
     def __init__(
@@ -89,6 +104,10 @@ class ICDBridge:
         self._icd_config = None
         self._icd_service = None
         self._indexing_in_progress = False
+        # New: CRAG and graph components
+        self._crag_retriever = None
+        self._graph_builder = None
+        self._graph_retriever = None
 
     async def initialize(self) -> bool:
         """
@@ -166,6 +185,31 @@ class ICDBridge:
             self.config.entropy_threshold = self._icd_config.rlm.entropy_threshold
             self.config.max_rlm_iterations = self._icd_config.rlm.max_iterations
             self.config.budget_per_iteration = self._icd_config.rlm.budget_per_iteration
+
+            # Create CRAG retriever (wraps HybridRetriever for quality-aware retrieval)
+            if self.config.crag_enabled:
+                try:
+                    from icd.retrieval.crag import CRAGRetriever
+                    self._crag_retriever = CRAGRetriever(self._icd_config, self._retriever)
+                    logger.info("CRAG retriever initialized")
+                except ImportError:
+                    logger.warning("CRAG module not available")
+
+            # Create code graph builder and retriever
+            if self.config.graph_expansion_enabled:
+                try:
+                    from icd.graph import CodeGraphBuilder, GraphRetriever
+                    self._graph_builder = CodeGraphBuilder(self._icd_config)
+                    self._graph_retriever = GraphRetriever(
+                        self._icd_config,
+                        self._graph_builder,
+                        self._retriever,
+                    )
+                    # Try to load existing graph from index
+                    await self._load_code_graph()
+                    logger.info("Code graph components initialized")
+                except ImportError:
+                    logger.warning("Graph module not available")
 
             self._initialized = True
             logger.info(f"ICD bridge initialized for {self.project_root}")
@@ -271,12 +315,87 @@ class ICDBridge:
         """Check if indexing is currently in progress."""
         return self._indexing_in_progress
 
+    async def _load_code_graph(self) -> None:
+        """Load existing code graph from index if available."""
+        if not self._graph_builder:
+            return
+
+        # Try to load from persisted graph file
+        graph_path = self.project_root / ".icr" / "code_graph.json"
+        if not graph_path.exists():
+            graph_path = self.project_root / ".icd" / "code_graph.json"
+
+        if graph_path.exists():
+            try:
+                import json
+                data = json.loads(graph_path.read_text())
+                self._graph_builder.load_from_dict(data)
+                logger.info(
+                    "Code graph loaded",
+                    nodes=len(self._graph_builder.get_nodes()),
+                )
+            except Exception as e:
+                logger.debug(f"Could not load code graph: {e}")
+
+    async def build_code_graph(self, files: list[Path] | None = None) -> dict[str, int]:
+        """
+        Build the code graph from indexed files.
+
+        Args:
+            files: Optional list of files to process. If None, processes all indexed files.
+
+        Returns:
+            Statistics about the graph build.
+        """
+        if not self._graph_builder:
+            return {"error": "Graph builder not initialized"}
+
+        try:
+            # Get files from index if not provided
+            if files is None and self._icd_service:
+                # Query sqlite for all indexed files
+                indexed = await self._icd_service._sqlite_store.get_all_files()
+                files = [Path(f.file_path) for f in indexed]
+            elif files is None:
+                # Scan project directory
+                files = list(self.project_root.rglob("*.py"))
+                files.extend(self.project_root.rglob("*.ts"))
+                files.extend(self.project_root.rglob("*.js"))
+
+            # Build graph
+            for file_path in files:
+                if file_path.exists():
+                    try:
+                        await self._graph_builder.process_file(file_path)
+                    except Exception as e:
+                        logger.debug(f"Could not process {file_path}: {e}")
+
+            # Persist graph
+            graph_path = self.project_root / ".icr" / "code_graph.json"
+            graph_path.parent.mkdir(parents=True, exist_ok=True)
+            import json
+            graph_path.write_text(json.dumps(self._graph_builder.to_dict(), indent=2))
+
+            stats = {
+                "nodes": len(self._graph_builder.get_nodes()),
+                "edges": len(self._graph_builder.get_edges()),
+                "files_processed": len(files),
+            }
+            logger.info("Code graph built", **stats)
+            return stats
+
+        except Exception as e:
+            logger.error(f"Failed to build code graph: {e}")
+            return {"error": str(e)}
+
     async def retrieve(
         self,
         query: str,
         k: int = 20,
-        mode: str = "auto",  # "auto", "pack", "rlm"
+        mode: str = "auto",  # "auto", "pack", "rlm", "true_rlm"
         focus_paths: list[str] | None = None,
+        use_crag: bool | None = None,  # None = use config default
+        use_graph_expansion: bool | None = None,  # None = use config default
     ) -> RetrievalResult:
         """
         Retrieve relevant chunks for a query.
@@ -284,8 +403,10 @@ class ICDBridge:
         Args:
             query: Natural language query
             k: Number of results to return
-            mode: Retrieval mode (auto, pack, rlm)
+            mode: Retrieval mode (auto, pack, rlm, true_rlm)
             focus_paths: Optional paths to prioritize
+            use_crag: Override CRAG setting (None = use config)
+            use_graph_expansion: Override graph expansion setting (None = use config)
 
         Returns:
             RetrievalResult with chunks and metrics
@@ -297,34 +418,88 @@ class ICDBridge:
             # Fallback to basic retrieval
             return await self._basic_retrieve(query, k)
 
+        # Resolve optional flags
+        should_use_crag = use_crag if use_crag is not None else self.config.crag_enabled
+        should_use_graph = use_graph_expansion if use_graph_expansion is not None else self.config.graph_expansion_enabled
+
         try:
-            # Step 1: Initial retrieval
+            # Step 1: Initial retrieval (with CRAG if enabled)
             focus_path_objs = [Path(p) for p in (focus_paths or [])]
-            initial_result = await self._retriever.retrieve(
-                query=query,
-                limit=k,
-                focus_paths=focus_path_objs,
-            )
+            crag_quality = ""
+            crag_confidence = 0.0
+
+            if should_use_crag and self._crag_retriever:
+                # Use CRAG for quality-aware retrieval
+                initial_result = await self._crag_retriever.retrieve_with_correction(
+                    query=query,
+                    limit=k,
+                    focus_paths=focus_path_objs,
+                )
+                crag_quality = initial_result.metadata.get("crag_quality", "")
+                crag_confidence = initial_result.metadata.get("crag_confidence", 0.0)
+                logger.debug(
+                    "CRAG retrieval complete",
+                    quality=crag_quality,
+                    confidence=crag_confidence,
+                )
+            else:
+                # Standard retrieval
+                initial_result = await self._retriever.retrieve(
+                    query=query,
+                    limit=k,
+                    focus_paths=focus_path_objs,
+                )
 
             entropy = initial_result.entropy
 
             # Step 2: Determine mode
             if mode == "auto":
                 use_rlm = entropy >= self.config.entropy_threshold
-                resolved_mode = "rlm" if use_rlm else "pack"
+                # Use True RLM if enabled and entropy is high
+                if use_rlm and self.config.true_rlm_enabled:
+                    resolved_mode = "true_rlm"
+                elif use_rlm:
+                    resolved_mode = "rlm"
+                else:
+                    resolved_mode = "pack"
             else:
                 resolved_mode = mode
-                use_rlm = mode == "rlm"
+                use_rlm = mode in ("rlm", "true_rlm")
 
             # Step 3: Execute RLM if needed
-            if use_rlm and self._planner and self._aggregator:
+            if resolved_mode == "true_rlm":
+                return await self._execute_true_rlm(
+                    query=query,
+                    initial_result=initial_result,
+                    k=k,
+                    crag_quality=crag_quality,
+                    crag_confidence=crag_confidence,
+                )
+            elif use_rlm and self._planner and self._aggregator:
                 return await self._execute_rlm(
                     query=query,
                     initial_result=initial_result,
                     k=k,
+                    crag_quality=crag_quality,
+                    crag_confidence=crag_confidence,
                 )
             else:
-                # Return initial results
+                # Step 4: Optional graph expansion for pack mode
+                graph_nodes_expanded = 0
+                if should_use_graph and self._graph_retriever:
+                    try:
+                        expanded_result = await self._graph_retriever.retrieve_with_expansion(
+                            query=query,
+                            limit=k,
+                            query_type="default",
+                        )
+                        if expanded_result.metadata.get("graph_expansion"):
+                            initial_result = expanded_result
+                            graph_nodes_expanded = expanded_result.metadata["graph_expansion"].get("expanded_nodes", 0)
+                    except Exception as e:
+                        logger.debug(f"Graph expansion failed: {e}")
+
+                # Return results
                 chunks = [
                     {
                         "chunk_id": c.chunk_id,
@@ -348,6 +523,9 @@ class ICDBridge:
                     metrics=RLMMetrics(
                         mode=resolved_mode,
                         entropy=entropy,
+                        crag_quality=crag_quality,
+                        crag_confidence=crag_confidence,
+                        graph_nodes_expanded=graph_nodes_expanded,
                     ),
                 )
 
@@ -360,6 +538,8 @@ class ICDBridge:
         query: str,
         initial_result: Any,
         k: int,
+        crag_quality: str = "",
+        crag_confidence: float = 0.0,
     ) -> RetrievalResult:
         """
         Execute RLM iterative retrieval.
@@ -371,6 +551,8 @@ class ICDBridge:
             query: Original query
             initial_result: Results from initial retrieval
             k: Number of final results
+            crag_quality: Quality assessment from CRAG
+            crag_confidence: Confidence score from CRAG
 
         Returns:
             RetrievalResult with aggregated chunks
@@ -458,9 +640,109 @@ class ICDBridge:
                 aggregation_dedup_ratio=aggregated.metadata.get("duplicate_ratio", 0),
                 used_llm_decomposition=used_llm,
                 llm_reasoning=llm_reasoning,
+                crag_quality=crag_quality,
+                crag_confidence=crag_confidence,
             ),
             sub_query_results=sub_query_info,
         )
+
+    async def _execute_true_rlm(
+        self,
+        query: str,
+        initial_result: Any,
+        k: int,
+        crag_quality: str = "",
+        crag_confidence: float = 0.0,
+    ) -> RetrievalResult:
+        """
+        Execute True RLM with context externalization.
+
+        Uses the TrueRLMOrchestrator for research-grade retrieval with:
+        - LLM-generated retrieval programs
+        - Parallel operation execution
+        - Quality evaluation and refinement
+        - Graph-aware exploration
+
+        Args:
+            query: Original query
+            initial_result: Results from initial retrieval
+            k: Number of final results
+            crag_quality: Quality assessment from CRAG
+            crag_confidence: Confidence score from CRAG
+
+        Returns:
+            RetrievalResult with chunks from True RLM execution
+        """
+        try:
+            from icd.rlm.true_rlm import run_true_rlm
+
+            # Execute True RLM
+            rlm_result = await run_true_rlm(
+                config=self._icd_config,
+                base_retriever=self._retriever,
+                query=query,
+                graph_builder=self._graph_builder,
+                limit=k,
+            )
+
+            # Convert to bridge result format
+            chunks = [
+                {
+                    "chunk_id": c.chunk_id,
+                    "file_path": c.file_path,
+                    "content": c.content,
+                    "start_line": c.start_line,
+                    "end_line": c.end_line,
+                    "symbol_name": c.symbol_name,
+                    "symbol_type": c.symbol_type,
+                    "language": c.language,
+                    "token_count": c.token_count,
+                    "is_contract": c.is_contract,
+                }
+                for c in rlm_result.chunks[:k]
+            ]
+
+            return RetrievalResult(
+                chunks=chunks,
+                scores=rlm_result.scores[:k],
+                entropy=rlm_result.final_entropy,
+                metrics=RLMMetrics(
+                    mode="true_rlm",
+                    entropy=rlm_result.final_entropy,
+                    iterations=rlm_result.refinement_iterations,
+                    sub_queries_executed=rlm_result.operations_executed,
+                    total_chunks_retrieved=len(rlm_result.chunks),
+                    used_llm_decomposition=True,  # True RLM always uses LLM
+                    llm_reasoning=rlm_result.metadata.get("program_reasoning", ""),
+                    crag_quality=crag_quality,
+                    crag_confidence=crag_confidence,
+                    true_rlm_operations=rlm_result.operations_executed,
+                ),
+                sub_query_results=[
+                    {"step": i, "trace": trace}
+                    for i, trace in enumerate(rlm_result.execution_trace)
+                ],
+            )
+
+        except ImportError:
+            logger.warning("True RLM module not available, falling back to basic RLM")
+            return await self._execute_rlm(
+                query=query,
+                initial_result=initial_result,
+                k=k,
+                crag_quality=crag_quality,
+                crag_confidence=crag_confidence,
+            )
+        except Exception as e:
+            logger.error(f"True RLM execution failed: {e}")
+            # Fallback to basic RLM
+            return await self._execute_rlm(
+                query=query,
+                initial_result=initial_result,
+                k=k,
+                crag_quality=crag_quality,
+                crag_confidence=crag_confidence,
+            )
 
     async def _basic_retrieve(
         self,
