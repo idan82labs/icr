@@ -20,6 +20,7 @@ class EmbeddingBackend(str, Enum):
     """Supported embedding backends."""
 
     LOCAL_ONNX = "local_onnx"
+    SENTENCE_TRANSFORMER = "sentence_transformer"  # For Nomic, Jina, etc.
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     CUSTOM = "custom"
@@ -231,6 +232,16 @@ class RetrievalConfig(BaseModel):
         ge=0.1,
         le=10.0,
         description="Temperature for entropy computation",
+    )
+
+    # Reranker settings
+    reranker_enabled: bool = Field(
+        default=False,
+        description="Enable cross-encoder reranking for improved precision",
+    )
+    reranker_model: str = Field(
+        default="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        description="Cross-encoder model for reranking",
     )
 
 

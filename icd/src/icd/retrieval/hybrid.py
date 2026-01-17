@@ -130,6 +130,15 @@ class HybridRetriever:
         # Entropy settings
         self.entropy_temperature = config.retrieval.entropy_temperature
 
+        # Reranker (optional, improves precision by +5-10%)
+        self._reranker = None
+        if config.retrieval.reranker_enabled:
+            from icd.retrieval.reranker import CrossEncoderReranker
+            self._reranker = CrossEncoderReranker(
+                config,
+                model_name=config.retrieval.reranker_model,
+            )
+
     async def retrieve(
         self,
         query: str,
@@ -206,6 +215,14 @@ class HybridRetriever:
             pinned_ids=pinned_ids,
             focus_paths=focus_path_strs,
         )
+
+        # Step 7.5: Optional cross-encoder reranking (improves precision +5-10%)
+        if self._reranker is not None:
+            logger.debug("Applying cross-encoder reranking", count=len(scored_chunks))
+            scored_chunks = await self._reranker.rerank(
+                query=query,
+                chunks=scored_chunks,
+            )
 
         # Step 8: Apply MMR for diversity
         from icd.retrieval.mmr import MMRSelector

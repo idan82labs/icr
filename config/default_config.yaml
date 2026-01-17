@@ -36,15 +36,25 @@ icr:
   embedding:
     # Embedding backend selection
     # Options:
-    #   - local-onnx: ONNX Runtime with optimized inference (default, recommended)
-    #   - local-transformers: HuggingFace Transformers (fallback)
-    #   - remote-openai: OpenAI API (requires explicit opt-in)
-    #   - remote-cohere: Cohere API (requires explicit opt-in)
-    backend: local-onnx
+    #   - local_onnx: ONNX Runtime with optimized inference (default, fast)
+    #   - sentence_transformer: SentenceTransformers for modern code embeddings (recommended for quality)
+    #   - openai: OpenAI API (requires API key)
+    #   - anthropic: Anthropic API (not yet implemented)
+    backend: local_onnx
 
     # Model for local backends
-    # Recommended: all-MiniLM-L6-v2 (fast, good quality, 384 dimensions)
-    # Alternative: all-mpnet-base-v2 (better quality, 768 dimensions, slower)
+    #
+    # For local_onnx backend (fast, lower quality):
+    #   - all-MiniLM-L6-v2: 384d, 256 tokens (default, fastest)
+    #   - all-mpnet-base-v2: 768d, 384 tokens (better quality)
+    #
+    # For sentence_transformer backend (higher quality, requires GPU for speed):
+    #   - nomic-ai/nomic-embed-text-v1.5: 768d, 8192 tokens (best open-source for code)
+    #   - jinaai/jina-embeddings-v3: 1024d, 8192 tokens (strong alternative)
+    #   - jinaai/jina-embeddings-v2-base-code: 768d, 8192 tokens (code-specific)
+    #
+    # Recommendation: Use sentence_transformer with nomic-ai/nomic-embed-text-v1.5
+    # for best code retrieval quality (+20-25% vs MiniLM on code benchmarks).
     model: all-MiniLM-L6-v2
 
     # Embedding dimensions (auto-detected from model, but can override)
@@ -200,6 +210,17 @@ icr:
     # λ controls relevance vs diversity tradeoff
     # Higher = more relevance, lower = more diversity
     mmr_lambda: 0.7
+
+    # Cross-encoder reranking (optional, +5-10% precision improvement)
+    # Reranks initial results using a cross-encoder for more accurate relevance scoring.
+    # Trade-off: Adds ~50-100ms latency per query.
+    reranker:
+      enabled: false
+      # Model options:
+      #   - cross-encoder/ms-marco-MiniLM-L-6-v2 (fast, good quality)
+      #   - cross-encoder/ms-marco-MiniLM-L-12-v2 (better quality, slower)
+      #   - BAAI/bge-reranker-base (code-friendly)
+      model: cross-encoder/ms-marco-MiniLM-L-6-v2
 
     # Default number of results
     default_k: 20
