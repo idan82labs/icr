@@ -1,5 +1,13 @@
 # ICR specific
 .icr/
+.icd/
+
+# Internal research/development docs (not for users)
+RESEARCH_CRITIQUE*.md
+UPGRADE_PLAN.md
+IMPLEMENTATION_PLAN.md
+PRODUCTION_ROADMAP.md
+HONEST_DEMO.md
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -160,4 +168,3 @@ Thumbs.db
 # Local development
 *.local
 .envrc
-.icd/

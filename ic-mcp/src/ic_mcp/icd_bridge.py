@@ -33,6 +33,7 @@ class RetrievalConfig:
     crag_enabled: bool = False  # Disabled until fixes complete
     true_rlm_enabled: bool = True  # Use True RLM instead of basic planner
     graph_expansion_enabled: bool = True  # Enable code graph expansion
+    qir_enabled: bool = True  # Enable Query Intent Router for +9% MRR
 
 
 @dataclass
@@ -51,6 +52,9 @@ class RLMMetrics:
     crag_confidence: float = 0.0
     graph_nodes_expanded: int = 0
     true_rlm_operations: int = 0  # Number of True RLM operations executed
+    # QIR metrics
+    query_intent: str = ""  # Detected query intent
+    qir_confidence: float = 0.0  # Intent classification confidence
 
 
 @dataclass
@@ -108,6 +112,8 @@ class ICDBridge:
         self._crag_retriever = None
         self._graph_builder = None
         self._graph_retriever = None
+        # QIR component
+        self._query_router = None
 
     async def initialize(self) -> bool:
         """
@@ -185,6 +191,15 @@ class ICDBridge:
             self.config.entropy_threshold = self._icd_config.rlm.entropy_threshold
             self.config.max_rlm_iterations = self._icd_config.rlm.max_iterations
             self.config.budget_per_iteration = self._icd_config.rlm.budget_per_iteration
+
+            # Create QIR (Query Intent Router) for intent-aware weight adjustment
+            if self.config.qir_enabled:
+                try:
+                    from icd.retrieval.query_router import QueryRouter
+                    self._query_router = QueryRouter(self._icd_config)
+                    logger.info("Query Intent Router initialized")
+                except ImportError:
+                    logger.warning("QIR module not available")
 
             # Create CRAG retriever (wraps HybridRetriever for quality-aware retrieval)
             if self.config.crag_enabled:
@@ -422,7 +437,37 @@ class ICDBridge:
         should_use_crag = use_crag if use_crag is not None else self.config.crag_enabled
         should_use_graph = use_graph_expansion if use_graph_expansion is not None else self.config.graph_expansion_enabled
 
+        # QIR state (declared outside try for cleanup)
+        query_intent = ""
+        qir_confidence = 0.0
+        orig_weights = None
+
         try:
+            # Step 0: Apply QIR weight adjustments if enabled
+
+            if self._query_router and self.config.qir_enabled:
+                classification, strategy = self._query_router.route(query)
+                query_intent = classification.primary_intent.value
+                qir_confidence = classification.confidence
+
+                # Store original weights and apply multipliers
+                orig_weights = {
+                    "w_e": self._retriever.w_e,
+                    "w_b": self._retriever.w_b,
+                    "w_c": self._retriever.w_c,
+                    "w_r": self._retriever.w_r,
+                }
+                self._retriever.w_e = orig_weights["w_e"] * strategy.weight_embedding_mult
+                self._retriever.w_b = orig_weights["w_b"] * strategy.weight_bm25_mult
+                self._retriever.w_c = orig_weights["w_c"] * strategy.weight_contract_mult
+                self._retriever.w_r = orig_weights["w_r"] * strategy.weight_recency_mult
+
+                logger.debug(
+                    "QIR weights applied",
+                    intent=query_intent,
+                    confidence=qir_confidence,
+                )
+
             # Step 1: Initial retrieval (with CRAG if enabled)
             focus_path_objs = [Path(p) for p in (focus_paths or [])]
             crag_quality = ""
@@ -516,6 +561,13 @@ class ICDBridge:
                     for c in initial_result.chunks
                 ]
 
+                # Restore original weights if QIR was applied
+                if orig_weights:
+                    self._retriever.w_e = orig_weights["w_e"]
+                    self._retriever.w_b = orig_weights["w_b"]
+                    self._retriever.w_c = orig_weights["w_c"]
+                    self._retriever.w_r = orig_weights["w_r"]
+
                 return RetrievalResult(
                     chunks=chunks,
                     scores=initial_result.scores,
@@ -526,11 +578,19 @@ class ICDBridge:
                         crag_quality=crag_quality,
                         crag_confidence=crag_confidence,
                         graph_nodes_expanded=graph_nodes_expanded,
+                        query_intent=query_intent,
+                        qir_confidence=qir_confidence,
                     ),
                 )
 
         except Exception as e:
             logger.error(f"Retrieval failed: {e}")
+            # Restore weights on error too
+            if orig_weights and self._retriever:
+                self._retriever.w_e = orig_weights["w_e"]
+                self._retriever.w_b = orig_weights["w_b"]
+                self._retriever.w_c = orig_weights["w_c"]
+                self._retriever.w_r = orig_weights["w_r"]
             return await self._basic_retrieve(query, k)
 
     async def _execute_rlm(
